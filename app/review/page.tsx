@@ -8,6 +8,7 @@ import { Header } from "@/components/Header";
 import { QuestionCard } from "@/components/QuestionCard";
 import { AnswerSheetViewer } from "@/components/AnswerSheetViewer";
 import { UnmatchedAnswersSection } from "@/components/UnmatchedAnswersSection";
+import { GradingSummaryPanel } from "@/components/GradingSummaryPanel";
 import {
   SAMPLE_QUESTIONS,
   SAMPLE_MATCHED_ANSWERS,
@@ -203,6 +204,9 @@ export default function ReviewPage() {
 
             {/* Scrollable Questions List */}
             <div className="flex-1 overflow-y-auto pr-1 sm:pr-2 space-y-3 pb-6">
+              {/* Grading Summary Overview */}
+              <GradingSummaryPanel questions={questions} answers={answers} />
+
               {questions.map((question) => {
                 const matched = answers.find(
                   (a) =>

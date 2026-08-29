@@ -97,9 +97,87 @@ export default function UploadPage() {
 
       // Step 4: Mapping Answers
       setExtractionStage("mapping-answers");
-      setExtractedAnswers(asData.answers || [], asData.unmatchedAnswers || []);
+      const rawAnswersList = asData.answers || [];
+      const rawUnmatchedList = asData.unmatchedAnswers || [];
+      setExtractedAnswers(rawAnswersList, rawUnmatchedList);
 
-      await new Promise((res) => setTimeout(res, 600));
+      await new Promise((res) => setTimeout(res, 500));
+
+      // Step 5: Grading Answers (only for answered: true)
+      setExtractionStage("grading-answers");
+
+      const answeredItemsToGrade = extractedQuestionsList
+        .map((q: any) => {
+          const matched = rawAnswersList.find(
+            (a: any) => a.questionId === q.id || a.questionId === q.number
+          );
+          if (
+            matched &&
+            matched.answered &&
+            matched.extractedText &&
+            matched.extractedText.trim().length > 0
+          ) {
+            return {
+              questionId: q.id,
+              question: q.text,
+              answer: matched.extractedText,
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
+
+      let gradedAnswers = [...rawAnswersList];
+
+      if (answeredItemsToGrade.length > 0) {
+        try {
+          const gradeResponse = await fetch("/api/grade", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items: answeredItemsToGrade }),
+          });
+
+          const gradeData = await gradeResponse.json();
+
+          if (gradeResponse.ok && gradeData.success && Array.isArray(gradeData.results)) {
+            const gradeMap: Record<string, any> = {};
+            gradeData.results.forEach((r: any) => {
+              gradeMap[r.questionId] = r;
+            });
+
+            gradedAnswers = rawAnswersList.map((a: any) => {
+              const g = gradeMap[a.questionId] || gradeMap[`q_${a.questionId}`];
+              if (g) {
+                return {
+                  ...a,
+                  score: `${g.score}/10`,
+                  gradeScore: g.score,
+                  maxScore: 10,
+                  correct: g.correct,
+                  feedback: g.feedback,
+                };
+              }
+              if (!a.answered) {
+                return {
+                  ...a,
+                  score: "0/10",
+                  gradeScore: 0,
+                  maxScore: 10,
+                  correct: false,
+                  feedback: "No answer provided on the answer sheet.",
+                };
+              }
+              return a;
+            });
+          }
+        } catch (gradeErr) {
+          console.warn("Grading API error (proceeding with mapped answers):", gradeErr);
+        }
+      }
+
+      setExtractedAnswers(gradedAnswers, rawUnmatchedList);
+
+      await new Promise((res) => setTimeout(res, 400));
 
       // Redirect to review page
       setIsExtracting(false);

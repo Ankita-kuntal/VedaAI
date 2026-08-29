@@ -28,6 +28,9 @@ export interface MatchedAnswer {
   regions: AnswerRegion[];
   feedback?: string;
   score?: string;
+  gradeScore?: number;
+  maxScore?: number;
+  correct?: boolean;
 }
 
 export interface UnmatchedAnswer {
@@ -47,7 +50,8 @@ export type ExtractionStage =
   | "uploading"
   | "extracting-questions"
   | "extracting-answers"
-  | "mapping-answers";
+  | "mapping-answers"
+  | "grading-answers";
 
 interface AppContextType {
   questionPaperFile: File | null;

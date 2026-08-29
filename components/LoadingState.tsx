@@ -12,6 +12,7 @@ export function LoadingState({ stage }: LoadingStateProps) {
     { id: "extracting-questions", label: "2. Extracting Questions" },
     { id: "extracting-answers", label: "3. Extracting Answers" },
     { id: "mapping-answers", label: "4. Mapping Answers" },
+    { id: "grading-answers", label: "5. Grading Answers" },
   ];
 
   const stageIndexMap: Record<ExtractionStage, number> = {
@@ -20,6 +21,7 @@ export function LoadingState({ stage }: LoadingStateProps) {
     "extracting-questions": 1,
     "extracting-answers": 2,
     "mapping-answers": 3,
+    "grading-answers": 4,
   };
 
   const currentIdx = stageIndexMap[stage] ?? 0;
@@ -33,6 +35,8 @@ export function LoadingState({ stage }: LoadingStateProps) {
       ? "Extracting Answers..."
       : stage === "mapping-answers"
       ? "Mapping Answers..."
+      : stage === "grading-answers"
+      ? "Grading Answers..."
       : "Processing...";
 
   return (

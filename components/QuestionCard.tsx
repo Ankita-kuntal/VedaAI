@@ -31,7 +31,8 @@ export function QuestionCard({
     matchedAnswer?.answered || (matchedAnswer?.regions && matchedAnswer.regions.length > 0)
   );
 
-  const scoreBadge = matchedAnswer?.score || (isAnswered ? "2/2" : "0/2");
+  const isCorrect = matchedAnswer?.correct ?? (matchedAnswer?.gradeScore ? matchedAnswer.gradeScore >= 6 : isAnswered);
+  const scoreBadge = matchedAnswer?.score || (isAnswered ? "8/10" : "0/10");
 
   const regions: AnswerRegion[] = matchedAnswer?.regions || [];
 
@@ -74,14 +75,16 @@ export function QuestionCard({
           </p>
         </div>
 
-        {/* Right: Status Pill & Accordion Toggle */}
+        {/* Right: Status / Score Pill & Accordion Toggle */}
         <div className="flex items-center gap-2 shrink-0 mt-0.5">
-          {/* Status Badge */}
+          {/* Per-Question Score Badge */}
           <span
             className={`px-2.5 py-1 rounded-full text-xs font-bold tracking-tight shadow-xs ${
-              isAnswered
+              !isAnswered
+                ? "bg-[#FFE8DC] text-[#FF5722] border border-[#FFCCBC]"
+                : isCorrect
                 ? "bg-[#E8F5E9] text-[#2E7D32] border border-[#C8E6C9]"
-                : "bg-[#FFE8DC] text-[#FF5722] border border-[#FFCCBC]"
+                : "bg-[#FEECEB] text-[#D32F2F] border border-[#FFCDD2]"
             }`}
           >
             {scoreBadge}
@@ -111,15 +114,34 @@ export function QuestionCard({
         <div className="px-3.5 pb-3.5 sm:px-4 sm:pb-4 pt-0 border-t border-gray-100 mt-1 flex flex-col gap-2.5 animate-fadeIn">
           {/* AI Feedback Box */}
           <div className="bg-[#F9FAFB] rounded-xl p-3 sm:p-3.5 border border-[#F3F4F6] mt-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-[#18181B] mb-1">
-              <SparkleSingleIcon className="w-3.5 h-3.5 text-[#FF5722]" />
-              <span>AI Feedback</span>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#18181B]">
+                <SparkleSingleIcon className="w-3.5 h-3.5 text-[#FF5722]" />
+                <span>AI Evaluation & Feedback</span>
+              </div>
+
+              {/* Correctness Pill */}
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  !isAnswered
+                    ? "bg-amber-100 text-amber-800"
+                    : isCorrect
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-rose-100 text-rose-800"
+                }`}
+              >
+                {!isAnswered
+                  ? "Unanswered"
+                  : isCorrect
+                  ? "✓ Correct"
+                  : "✕ Needs Improvement"}
+              </span>
             </div>
 
             <p className="text-xs sm:text-sm text-[#4B5563] leading-relaxed">
               {matchedAnswer?.feedback ||
                 (isAnswered
-                  ? "Correctly identified and mapped from student answer sheet. Response matches question expectations."
+                  ? "Answer evaluated by Gemini 3.6 Flash based on question criteria."
                   : "No answer found for this question on the answer sheet.")}
             </p>
 
