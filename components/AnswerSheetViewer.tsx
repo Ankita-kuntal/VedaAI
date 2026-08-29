@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
@@ -50,9 +50,31 @@ export function AnswerSheetViewer({
   const [isImage, setIsImage] = useState<boolean>(false);
   const [pdfWorkerReady, setPdfWorkerReady] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(640);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const activeOverlayRef = useRef<HTMLDivElement | null>(null);
+
+  // Measure container width for responsive fit-to-width
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const measureWidth = () => {
+      if (containerRef.current) {
+        // Leave comfortable horizontal padding (e.g. 24px each side = 48px total)
+        const available = containerRef.current.clientWidth - 48;
+        if (available > 200) {
+          setContainerWidth(available);
+        }
+      }
+    };
+
+    measureWidth();
+    const observer = new ResizeObserver(measureWidth);
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   // Initialize PDF.js worker
   useEffect(() => {
@@ -100,20 +122,51 @@ export function AnswerSheetViewer({
     };
   }, [file]);
 
-  // Scroll to active region when question is selected
+  // Precise smooth scroll calculation to center the highlighted region vertically in the viewport
+  const centerHighlightRegion = useCallback((region: AnswerRegion | null) => {
+    if (!region || !containerRef.current) return;
+
+    const targetPageNum = region.page || 1;
+    const targetPageEl = pageRefs.current[targetPageNum];
+    if (!targetPageEl) return;
+
+    const container = containerRef.current;
+    const pageTop = targetPageEl.offsetTop;
+    const pageHeight = targetPageEl.offsetHeight || targetPageEl.clientHeight;
+
+    // Calculate vertical center of the bounding box on the page
+    const ymin = region.bbox[0]; // 0-1000
+    const ymax = region.bbox[2]; // 0-1000
+    const normalizedCenterY = (ymin + ymax) / 2000;
+    const bboxAbsoluteCenterY = pageTop + normalizedCenterY * pageHeight;
+
+    const containerHeight = container.clientHeight;
+    const targetScrollTop = bboxAbsoluteCenterY - containerHeight / 2;
+
+    container.scrollTo({
+      top: Math.max(0, targetScrollTop),
+      behavior: "smooth",
+    });
+  }, []);
+
+  // Auto-scroll when active region or unmatched region changes
   useEffect(() => {
-    if (activeRegion) {
-      const targetPageNum = activeRegion.page || 1;
+    const targetRegion = activeRegion || unmatchedRegion;
+    if (targetRegion) {
+      const targetPageNum = targetRegion.page || 1;
       onPageChange(targetPageNum);
 
-      const targetPageEl = pageRefs.current[targetPageNum];
-      if (targetPageEl) {
-        setTimeout(() => {
-          targetPageEl.scrollIntoView({ behavior: "smooth", block: "center" });
-        }, 150);
-      }
+      // Perform initial smooth scroll, and a follow-up after layout settles
+      centerHighlightRegion(targetRegion);
+      const timer1 = setTimeout(() => centerHighlightRegion(targetRegion), 100);
+      const timer2 = setTimeout(() => centerHighlightRegion(targetRegion), 300);
+
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+      };
     }
-  }, [activeRegion]);
+  }, [activeRegion, unmatchedRegion, centerHighlightRegion, onPageChange]);
 
   const handleZoomIn = () => {
     setZoom((prev) => Math.min(prev + 25, 200));
@@ -127,7 +180,13 @@ export function AnswerSheetViewer({
     if (currentPage > 1) {
       const nextP = currentPage - 1;
       onPageChange(nextP);
-      pageRefs.current[nextP]?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const targetEl = pageRefs.current[nextP];
+      if (targetEl && containerRef.current) {
+        containerRef.current.scrollTo({
+          top: targetEl.offsetTop,
+          behavior: "smooth",
+        });
+      }
     }
   };
 
@@ -135,13 +194,22 @@ export function AnswerSheetViewer({
     if (currentPage < numPages) {
       const nextP = currentPage + 1;
       onPageChange(nextP);
-      pageRefs.current[nextP]?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const targetEl = pageRefs.current[nextP];
+      if (targetEl && containerRef.current) {
+        containerRef.current.scrollTo({
+          top: targetEl.offsetTop,
+          behavior: "smooth",
+        });
+      }
     }
   };
 
   const onDocumentLoadSuccess = ({ numPages: loadedNumPages }: { numPages: number }) => {
     setNumPages(loadedNumPages);
     setLoadError(null);
+    if (activeRegion) {
+      setTimeout(() => centerHighlightRegion(activeRegion), 200);
+    }
   };
 
   const onDocumentLoadError = (error: Error) => {
@@ -149,7 +217,11 @@ export function AnswerSheetViewer({
     setLoadError(`Failed to load uploaded PDF: ${error.message}`);
   };
 
-  const renderedWidth = Math.round(680 * (zoom / 100));
+  // Compute rendered width: 100% zoom fits the container width cleanly (fit-to-width)
+  const renderedWidth = Math.max(
+    320,
+    Math.round(containerWidth * (zoom / 100))
+  );
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#303030] rounded-3xl overflow-hidden shadow-sm border border-[#27272A]">
@@ -217,10 +289,10 @@ export function AnswerSheetViewer({
         </div>
       </div>
 
-      {/* Answer Sheet Scrollable Container */}
+      {/* Answer Sheet Scrollable Container with Smooth Scrolling */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto p-3 sm:p-6 flex flex-col items-center gap-6 bg-[#212124]"
+        className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 flex flex-col items-center gap-6 bg-[#212124] scroll-smooth"
       >
         {/* State 1: No file uploaded */}
         {!file && (
@@ -271,13 +343,14 @@ export function AnswerSheetViewer({
             {/* Matched Bounding Box Overlay on Real Image */}
             {activeRegion && (activeRegion.page === 1 || !activeRegion.page) && (
               <div
+                ref={activeOverlayRef}
                 style={{
                   top: `${activeRegion.bbox[0] / 10}%`,
                   left: `${activeRegion.bbox[1] / 10}%`,
                   height: `${(activeRegion.bbox[2] - activeRegion.bbox[0]) / 10}%`,
                   width: `${(activeRegion.bbox[3] - activeRegion.bbox[1]) / 10}%`,
                 }}
-                className="absolute border-2 border-[#16A34A] bg-[#22C55E]/15 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_15px_rgba(34,197,94,0.35)] animate-pulse-subtle z-20"
+                className="absolute border-2 border-[#16A34A] bg-[#22C55E]/15 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(34,197,94,0.35)] animate-pulse-subtle z-20"
               >
                 <div className="absolute -top-3.5 -left-0.5 bg-[#16A34A] text-white text-[11px] sm:text-xs font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm flex items-center gap-1">
                   <span>Q{activeQuestionNumber || "1"}</span>
@@ -294,7 +367,7 @@ export function AnswerSheetViewer({
                   height: `${(unmatchedRegion.bbox[2] - unmatchedRegion.bbox[0]) / 10}%`,
                   width: `${(unmatchedRegion.bbox[3] - unmatchedRegion.bbox[1]) / 10}%`,
                 }}
-                className="absolute border-2 border-amber-500 bg-amber-500/20 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_15px_rgba(245,158,11,0.35)] z-20"
+                className="absolute border-2 border-amber-500 bg-amber-500/20 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(245,158,11,0.35)] z-20"
               >
                 <div className="absolute -top-3.5 -left-0.5 bg-amber-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm">
                   <span>Unmatched</span>
@@ -318,7 +391,7 @@ export function AnswerSheetViewer({
                 </p>
               </div>
             }
-            className="flex flex-col items-center gap-6"
+            className="flex flex-col items-center gap-6 w-full"
           >
             {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
               const isCurrentRegionPage = activeRegion?.page === pageNum;
@@ -348,19 +421,20 @@ export function AnswerSheetViewer({
                     width={renderedWidth}
                     renderTextLayer={false}
                     renderAnnotationLayer={false}
-                    className="block"
+                    className="block w-full h-auto"
                   />
 
                   {/* Dynamic Bounding Box Overlay for Matched Active Question on Real PDF Page */}
                   {isCurrentRegionPage && activeRegion && (
                     <div
+                      ref={activeOverlayRef}
                       style={{
                         top: `${activeRegion.bbox[0] / 10}%`,
                         left: `${activeRegion.bbox[1] / 10}%`,
                         height: `${(activeRegion.bbox[2] - activeRegion.bbox[0]) / 10}%`,
                         width: `${(activeRegion.bbox[3] - activeRegion.bbox[1]) / 10}%`,
                       }}
-                      className="absolute border-2 border-[#16A34A] bg-[#22C55E]/15 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_15px_rgba(34,197,94,0.35)] animate-pulse-subtle z-20"
+                      className="absolute border-2 border-[#16A34A] bg-[#22C55E]/15 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(34,197,94,0.35)] animate-pulse-subtle z-20"
                     >
                       {/* Top-Left Green Pill Badge Q{Number} matching Figma */}
                       <div className="absolute -top-3.5 -left-0.5 bg-[#16A34A] text-white text-[11px] sm:text-xs font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm flex items-center gap-1">
@@ -378,7 +452,7 @@ export function AnswerSheetViewer({
                         height: `${(unmatchedRegion.bbox[2] - unmatchedRegion.bbox[0]) / 10}%`,
                         width: `${(unmatchedRegion.bbox[3] - unmatchedRegion.bbox[1]) / 10}%`,
                       }}
-                      className="absolute border-2 border-amber-500 bg-amber-500/20 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_15px_rgba(245,158,11,0.35)] z-20"
+                      className="absolute border-2 border-amber-500 bg-amber-500/20 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(245,158,11,0.35)] z-20"
                     >
                       <div className="absolute -top-3.5 -left-0.5 bg-amber-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm">
                         <span>Unmatched</span>
