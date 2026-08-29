@@ -112,14 +112,13 @@ export function QuestionCard({
 
       {/* Expanded Accordion Area (Matching Figma AI Feedback Card) */}
       {isExpanded && (
-        <div className="px-3.5 pb-3.5 sm:px-4 sm:pb-4 pt-0 border-t border-gray-100 mt-1 flex flex-col gap-2.5 animate-fadeIn">
+        <div className="px-3.5 pb-3.5 sm:px-4 sm:pb-4 pt-1 flex flex-col gap-2 animate-fadeIn">
           {/* AI Feedback Box */}
-          <div className="bg-[#F9FAFB] rounded-xl p-3 sm:p-3.5 border border-[#F3F4F6] mt-2">
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-[#18181B]">
-                <SparkleSingleIcon className="w-3.5 h-3.5 text-[#FF5722]" />
-                <span>AI Evaluation & Feedback</span>
-              </div>
+          <div className="bg-[#F9FAFB] rounded-xl p-3 sm:p-3.5 border border-[#F0F1F5] flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-heading font-bold text-xs sm:text-[13px] text-[#18181B]">
+                AI Feedback
+              </span>
 
               {/* Correctness Pill */}
               <span
@@ -139,17 +138,17 @@ export function QuestionCard({
               </span>
             </div>
 
-            <p className="text-xs sm:text-sm text-[#4B5563] leading-relaxed">
+            <p className="text-xs sm:text-[13px] text-[#4B5563] leading-relaxed font-normal">
               {matchedAnswer?.feedback ||
                 (isAnswered
-                  ? "Answer evaluated by Gemini Flash AI based on question criteria."
+                  ? "Excellent work! Answer evaluated and verified by Gemini AI based on criteria."
                   : "No answer found for this question on the answer sheet.")}
             </p>
 
             {/* Extracted Handwritten Answer Text if present */}
             {matchedAnswer?.extractedText && (
-              <div className="mt-2.5 pt-2.5 border-t border-gray-200">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block mb-1">
+              <div className="mt-2 pt-2 border-t border-gray-200/80">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">
                   Extracted Handwritten Text
                 </span>
                 <p className="text-xs text-gray-800 italic bg-white p-2 rounded-lg border border-gray-200 font-mono whitespace-pre-wrap leading-relaxed">

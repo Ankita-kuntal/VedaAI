@@ -215,24 +215,24 @@ export default function ReviewPage() {
   }, [activeMatchedAnswer, activeRegionIndex, activeUnmatchedRegion]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#F0F1F5]">
+    <div className="flex h-screen w-screen overflow-hidden bg-gradient-to-b from-[#F5F5F5] to-[#E9E5E5] p-3 gap-3">
       {/* Left Collapsible Sidebar */}
-      <Sidebar />
+      <Sidebar defaultCollapsed={true} />
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col my-3 mr-3 ml-3 lg:ml-0 bg-white rounded-3xl shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-[#ECEEF2] overflow-hidden relative">
-        {/* Header matching Figma */}
+      {/* Main Right Area */}
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden gap-3">
+        {/* Floating Pure White Navbar */}
         <Header
           title="Exams"
           onBackClick={() => router.push("/")}
         />
 
         {/* Mobile View Toggle Bar matching Phone Screenshot */}
-        <div className="lg:hidden px-4 py-2.5 bg-[#F0F1F5] border-b border-[#ECEEF2] flex items-center justify-center shrink-0">
+        <div className="lg:hidden px-4 py-2 bg-white rounded-2xl border border-[#E5E7EB]/60 flex items-center justify-center shrink-0 shadow-xs">
           <div className="bg-[#E5E7EB] p-1 rounded-full flex items-center gap-1 w-full max-w-sm">
             <button
               onClick={() => setMobileTab("questions")}
-              className={`flex-1 py-2 rounded-full font-heading font-medium text-xs transition-all ${
+              className={`flex-1 py-1.5 rounded-full font-heading font-medium text-xs transition-all ${
                 mobileTab === "questions"
                   ? "bg-[#303030] text-white shadow-sm"
                   : "text-[#4B5563] hover:text-[#18181B]"
@@ -242,7 +242,7 @@ export default function ReviewPage() {
             </button>
             <button
               onClick={() => setMobileTab("answers")}
-              className={`flex-1 py-2 rounded-full font-heading font-medium text-xs transition-all ${
+              className={`flex-1 py-1.5 rounded-full font-heading font-medium text-xs transition-all ${
                 mobileTab === "answers"
                   ? "bg-[#303030] text-white shadow-sm"
                   : "text-[#4B5563] hover:text-[#18181B]"
@@ -254,10 +254,10 @@ export default function ReviewPage() {
         </div>
 
         {/* Split Panel Layout (Desktop: Side-by-Side, Mobile: Tab Controlled) */}
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-3 sm:p-4 lg:p-5 gap-4">
+        <main className="flex-1 flex flex-col lg:flex-row overflow-hidden gap-3 min-h-0">
           {/* Left Panel: Questions List */}
           <div
-            className={`flex-1 lg:max-w-[48%] flex flex-col h-full overflow-hidden ${
+            className={`flex-1 lg:max-w-[48%] flex flex-col h-full overflow-hidden bg-white rounded-3xl shadow-[0_2px_8px_rgba(0,0,0,0.03)] border border-[#E5E7EB]/60 p-3.5 sm:p-4.5 ${
               mobileTab === "questions" ? "flex" : "hidden lg:flex"
             }`}
           >
@@ -346,8 +346,8 @@ export default function ReviewPage() {
               allRegions={allPageRegions}
             />
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
