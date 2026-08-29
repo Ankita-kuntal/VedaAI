@@ -1,68 +1,252 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useState } from "react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useApp } from "@/context/AppContext";
+import { Sidebar } from "@/components/Sidebar";
+import { Header } from "@/components/Header";
+import { UploadDropzone } from "@/components/UploadDropzone";
+import { LoadingState } from "@/components/LoadingState";
+import { ArrowRightIcon } from "@/components/icons";
+
+export default function UploadPage() {
+  const router = useRouter();
+  const {
+    questionPaperFile,
+    questionPaperMeta,
+    answerSheetFile,
+    answerSheetMeta,
+    isExtracting,
+    extractionStage,
+    errorMessage,
+    setQuestionPaper,
+    setAnswerSheet,
+    setExtractedQuestions,
+    setIsExtracting,
+    setExtractionStage,
+    setErrorMessage,
+  } = useApp();
+
+  const [toastError, setToastError] = useState<string | null>(null);
+
+  // Both files must be uploaded to enable Start Mapping
+  const isFormComplete = Boolean(questionPaperFile && answerSheetFile);
+
+  const handleStartMapping = async () => {
+    if (!isFormComplete || isExtracting) return;
+
+    if (!questionPaperFile) {
+      setToastError("Question paper file is missing. Please select your question paper file.");
+      return;
+    }
+
+    setToastError(null);
+    setErrorMessage(null);
+    setIsExtracting(true);
+    setExtractionStage("uploading");
+
+    try {
+      // Show uploading phase
+      await new Promise((res) => setTimeout(res, 600));
+      setExtractionStage("extracting");
+
+      // Build formData with the genuine file
+      const formData = new FormData();
+      formData.append("file", questionPaperFile);
+
+      const response = await fetch("/api/extract-questions", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error || "Failed to extract questions. Please verify your file."
+        );
+      }
+
+      // Store in context & redirect to review
+      setExtractedQuestions(data.questions);
+      setIsExtracting(false);
+      setExtractionStage("idle");
+      router.push("/review");
+    } catch (err: any) {
+      console.error("Extraction error:", err);
+      setIsExtracting(false);
+      setExtractionStage("idle");
+      const msg = err.message || "An error occurred during question extraction.";
+      setToastError(msg);
+      setErrorMessage(msg);
+    }
+  };
+
+  // Helper for quick testing demo
+  const handleLoadSampleFiles = () => {
+    const fakeQP = new File(["dummy question content"], "Class_10_maths_unit_test.pdf", {
+      type: "application/pdf",
+    });
+    const fakeAS = new File(["dummy answer content"], "student_1_answer_sheet.pdf", {
+      type: "application/pdf",
+    });
+
+    setQuestionPaper(fakeQP, {
+      name: "Class_10_maths_unit_test.pdf",
+      size: "2MB",
+      pages: 2,
+    });
+    setAnswerSheet(fakeAS, {
+      name: "student_1_answer_sheet.pdf",
+      size: "8MB",
+      pages: 6,
+    });
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex h-screen w-screen overflow-hidden bg-[#F0F1F5]">
+      {/* Left Sidebar (collapses automatically during loading state as per Figma) */}
+      <Sidebar forceCollapsed={isExtracting} />
+
+      {/* Main Container */}
+      <main className="flex-1 flex flex-col my-3 mr-3 ml-3 lg:ml-0 bg-white rounded-3xl shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-[#ECEEF2] overflow-hidden relative">
+        {/* Header */}
+        <Header title="Exams" />
+
+        {/* Content View: Loading or Upload */}
+        <div className="flex-1 flex flex-col overflow-y-auto">
+          {isExtracting ? (
+            <LoadingState stage={extractionStage === "uploading" ? "uploading" : "extracting"} />
+          ) : (
+            <div className="w-full flex-1 flex flex-col items-center justify-between px-4 py-6 sm:px-8 sm:py-8 lg:py-10 max-w-4xl mx-auto">
+              {/* Top Title & Subtitle */}
+              <div className="flex flex-col items-center text-center">
+                <h1 className="font-heading text-2xl sm:text-3xl lg:text-[34px] font-bold text-[#18181B] tracking-tight flex flex-wrap items-center justify-center gap-2">
+                  <span>Upload</span>
+                  <span className="bg-[#FFE8DC] text-[#FF5722] px-2.5 py-0.5 rounded-xl inline-block">
+                    Question Paper & Answer Sheets
+                  </span>
+                </h1>
+                <p className="text-sm sm:text-base text-[#6B7280] mt-2 font-normal">
+                  Upload both files to get started
+                </p>
+              </div>
+
+              {/* Center Teacher Avatar Illustration Badge */}
+              <div className="my-5 lg:my-6 relative flex items-center justify-center">
+                {/* Concentric rings matching Figma */}
+                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-[#FFE8DC] p-1.5 flex items-center justify-center relative shadow-xs">
+                  <div className="w-full h-full rounded-full bg-[#FFD2BE]/60 p-1 flex items-center justify-center relative overflow-hidden">
+                    <Image
+                      src="/teacher-avatar.jpg"
+                      alt="Teacher Avatar"
+                      width={120}
+                      height={120}
+                      className="w-full h-full object-cover rounded-full"
+                      priority
+                    />
+                  </div>
+
+                  {/* Little satellite badges matching Figma */}
+                  <div className="absolute -left-1 top-6 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
+                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                    </svg>
+                  </div>
+
+                  <div className="absolute -right-1 bottom-7 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
+                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                    </svg>
+                  </div>
+
+                  <div className="absolute right-4 -top-1 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
+                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <circle cx="12" cy="12" r="10" />
+                      <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                  </div>
+
+                  <div className="absolute left-6 -bottom-1 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
+                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              {/* Upload Dropzones Outer Container */}
+              <div className="w-full bg-[#F4F5F8] p-3 sm:p-5 rounded-3xl border border-[#E5E7EB] flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
+                <UploadDropzone
+                  label="Question Paper"
+                  file={questionPaperFile}
+                  meta={questionPaperMeta}
+                  onFileSelect={(file) => setQuestionPaper(file)}
+                  onFileRemove={() => setQuestionPaper(null)}
+                  disabled={isExtracting}
+                />
+
+                <UploadDropzone
+                  label="Answer Sheet"
+                  file={answerSheetFile}
+                  meta={answerSheetMeta}
+                  onFileSelect={(file) => setAnswerSheet(file)}
+                  onFileRemove={() => setAnswerSheet(null)}
+                  disabled={isExtracting}
+                />
+              </div>
+
+              {/* Bottom Action Area */}
+              <div className="flex flex-col items-center mt-6 gap-2.5">
+                <button
+                  id="start-mapping-btn"
+                  onClick={handleStartMapping}
+                  disabled={!isFormComplete || isExtracting}
+                  className={`px-7 py-3 rounded-full font-medium text-sm flex items-center gap-2.5 transition-all duration-200 shadow-sm ${
+                    isFormComplete && !isExtracting
+                      ? "bg-[#303030] hover:bg-[#1A1A1A] text-white cursor-pointer active:scale-98 shadow-md"
+                      : "bg-[#D1D5DB] text-[#9CA3AF] cursor-not-allowed"
+                  }`}
+                >
+                  <span>Start Mapping</span>
+                  <ArrowRightIcon className="w-4 h-4" />
+                </button>
+
+                <p className="text-xs sm:text-sm text-[#8E8E93] text-center font-normal">
+                  Once both files are uploaded, you&apos;ll able to map answers with questions
+                </p>
+
+                {/* Quick Demo Autofill Helper */}
+                {(!questionPaperMeta || !answerSheetMeta) && (
+                  <button
+                    onClick={handleLoadSampleFiles}
+                    type="button"
+                    className="text-[11px] text-gray-400 hover:text-gray-700 underline underline-offset-2 mt-1"
+                  >
+                    Quick Fill: Load Figma Sample Files
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+
+        {/* Error Toast Notification */}
+        {toastError && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-red-600 text-white text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-3 z-50 animate-bounce">
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <span>{toastError}</span>
+            <button
+              onClick={() => setToastError(null)}
+              className="ml-2 text-white/80 hover:text-white font-bold"
+            >
+              ✕
+            </button>
+          </div>
+        )}
       </main>
     </div>
   );
