@@ -229,65 +229,72 @@ export default function UploadPage() {
           {isExtracting ? (
             <LoadingState stage={extractionStage} />
           ) : (
-            <div className="w-full flex-1 flex flex-col items-center justify-between px-4 py-6 sm:px-8 sm:py-8 lg:py-10 max-w-4xl mx-auto">
+            <div className="w-full flex-1 flex flex-col items-center justify-between px-4 py-4 sm:px-8 sm:py-5 lg:py-6 max-w-5xl mx-auto h-full overflow-hidden">
               {/* Top Title & Subtitle */}
               <div className="flex flex-col items-center text-center">
-                <h1 className="font-heading text-2xl sm:text-3xl lg:text-[34px] font-bold text-[#18181B] tracking-tight flex flex-wrap items-center justify-center gap-2">
+                <h1 className="font-heading text-xl sm:text-2xl lg:text-[30px] font-bold text-[#18181B] tracking-tight flex flex-wrap items-center justify-center gap-2">
                   <span>Upload</span>
-                  <span className="bg-[#FFE8DC] text-[#FF5722] px-2.5 py-0.5 rounded-xl inline-block">
+                  <span className="bg-[#FFEFE7] text-[#FF5722] px-3 py-0.5 rounded-xl inline-block font-bold tracking-tight">
                     Question Paper & Answer Sheets
                   </span>
                 </h1>
-                <p className="text-sm sm:text-base text-[#6B7280] mt-2 font-normal">
+                <p className="text-xs sm:text-sm text-[#71717A] mt-1.5 font-normal">
                   Upload both files to get started
                 </p>
               </div>
 
               {/* Center Teacher Avatar Illustration Badge */}
-              <div className="my-5 lg:my-6 relative flex items-center justify-center">
+              <div className="my-2 sm:my-3 lg:my-4 relative flex items-center justify-center">
                 {/* Concentric rings matching Figma */}
-                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-[#FFE8DC] p-1.5 flex items-center justify-center relative shadow-xs">
-                  <div className="w-full h-full rounded-full bg-[#FFD2BE]/60 p-1 flex items-center justify-center relative overflow-hidden">
+                <div className="w-26 h-26 sm:w-28 sm:h-28 rounded-full bg-gradient-to-b from-[#FFEBE1] to-[#FFD8C7] p-1.5 flex items-center justify-center relative shadow-xs">
+                  <div className="w-full h-full rounded-full bg-white flex items-center justify-center relative overflow-hidden shadow-inner p-0.5">
                     <Image
-                      src="/teacher-avatar.jpg"
+                      src="/teacher-image.png"
                       alt="Teacher Avatar"
-                      width={120}
-                      height={120}
-                      className="w-full h-full object-cover rounded-full"
+                      width={110}
+                      height={110}
+                      className="w-full h-full object-contain"
                       priority
                     />
                   </div>
 
-                  {/* Little satellite badges matching Figma */}
-                  <div className="absolute -left-1 top-6 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
-                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <rect x="3" y="3" width="18" height="18" rx="2" />
-                    </svg>
-                  </div>
-
-                  <div className="absolute -right-1 bottom-7 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
-                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
-                    </svg>
-                  </div>
-
-                  <div className="absolute right-4 -top-1 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
+                  {/* Satellite Micro Badges matching Figma */}
+                  {/* Top Right: Clock */}
+                  <div className="absolute right-1 top-1 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
                     <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <circle cx="12" cy="12" r="10" />
                       <polyline points="12 6 12 12 16 14" />
                     </svg>
                   </div>
 
-                  <div className="absolute left-6 -bottom-1 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
+                  {/* Bottom Right: Cloud */}
+                  <div className="absolute -right-1 bottom-6 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
                     <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                    </svg>
+                  </div>
+
+                  {/* Bottom Center-Left: Gear/Settings */}
+                  <div className="absolute left-5 -bottom-1 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
+                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <circle cx="12" cy="12" r="3" />
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                  </div>
+
+                  {/* Middle Left: Book/Document */}
+                  <div className="absolute -left-1 top-6 w-4 h-4 rounded-full bg-[#FF7043] text-white flex items-center justify-center shadow-xs">
+                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <rect x="4" y="4" width="16" height="16" rx="2" />
+                      <line x1="8" y1="9" x2="16" y2="9" />
+                      <line x1="8" y1="13" x2="14" y2="13" />
                     </svg>
                   </div>
                 </div>
               </div>
 
-              {/* Upload Dropzones Outer Container */}
-              <div className="w-full bg-[#F4F5F8] p-3 sm:p-5 rounded-3xl border border-[#E5E7EB] flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
+              {/* Upload Dropzones Outer Panel matching Figma Frame 1984077325 */}
+              <div className="w-full bg-[#F5F5F5] p-3.5 sm:p-4 lg:p-5 rounded-[24px] sm:rounded-[28px] border border-[#E5E7EB] flex flex-col sm:flex-row items-center gap-3.5 sm:gap-5">
                 <UploadDropzone
                   label="Question Paper"
                   file={questionPaperFile}
@@ -308,22 +315,22 @@ export default function UploadPage() {
               </div>
 
               {/* Bottom Action Area */}
-              <div className="flex flex-col items-center mt-6 gap-2.5">
+              <div className="flex flex-col items-center mt-3 sm:mt-4 gap-1.5">
                 <button
                   id="start-mapping-btn"
                   onClick={handleStartMapping}
                   disabled={!isFormComplete || isExtracting}
-                  className={`px-7 py-3 rounded-full font-medium text-sm flex items-center gap-2.5 transition-all duration-200 shadow-sm ${
+                  className={`px-7 py-2.5 sm:py-3 rounded-full font-semibold text-xs sm:text-sm flex items-center gap-2 transition-all duration-200 shadow-sm ${
                     isFormComplete && !isExtracting
-                      ? "bg-[#303030] hover:bg-[#1A1A1A] text-white cursor-pointer active:scale-98 shadow-md"
-                      : "bg-[#D1D5DB] text-[#9CA3AF] cursor-not-allowed"
+                      ? "bg-[#18181B] hover:bg-black text-white cursor-pointer active:scale-98 shadow-md"
+                      : "bg-[#9CA3AF] text-white cursor-not-allowed opacity-90"
                   }`}
                 >
                   <span>Start Mapping</span>
                   <ArrowRightIcon className="w-4 h-4" />
                 </button>
 
-                <p className="text-xs sm:text-sm text-[#8E8E93] text-center font-normal">
+                <p className="text-[11px] sm:text-xs text-[#8E8E93] text-center font-normal">
                   Once both files are uploaded, you&apos;ll able to map answers with questions
                 </p>
 
@@ -332,7 +339,7 @@ export default function UploadPage() {
                   <button
                     onClick={handleLoadSampleFiles}
                     type="button"
-                    className="text-[11px] text-gray-400 hover:text-gray-700 underline underline-offset-2 mt-1"
+                    className="text-[10px] text-gray-400 hover:text-gray-700 underline underline-offset-2 mt-0.5 cursor-pointer"
                   >
                     Quick Fill: Load Figma Sample Files
                   </button>

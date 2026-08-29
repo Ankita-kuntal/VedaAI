@@ -56,38 +56,38 @@ export function Sidebar({ forceCollapsed = false }: SidebarProps) {
         )}
       </div>
 
-      {/* AI Teacher's Toolkit CTA Button */}
-      <div className="mb-4">
+      {/* AI Teacher's Toolkit CTA Button matching Figma */}
+      <div className="mb-5">
         {isCollapsed ? (
           <button
-            className="w-full h-11 rounded-2xl bg-[#303030] text-[#FF7A50] hover:text-white flex items-center justify-center shadow-sm hover:bg-[#202020] transition-all border border-[#FF7043]/30 group"
+            className="w-full h-11 rounded-2xl bg-[#27272A] text-white hover:text-white flex items-center justify-center shadow-sm hover:bg-[#18181B] transition-all border-2 border-[#FF5722] group"
             title="AI Teacher's Toolkit"
           >
-            <SparklesIcon className="w-5 h-5 text-[#FF7A50] group-hover:scale-110 transition-transform" />
+            <SparklesIcon className="w-5 h-5 text-white group-hover:scale-110 transition-transform" />
           </button>
         ) : (
-          <button className="w-full py-2.5 px-3 rounded-full bg-[#303030] hover:bg-[#202020] text-white flex items-center justify-center gap-2 shadow-sm border border-[#FF7043]/40 transition-all group">
-            <SparklesIcon className="w-4 h-4 text-[#FF7A50] group-hover:rotate-12 transition-transform" />
-            <span className="text-[13px] font-medium tracking-wide">AI Teacher&apos;s Toolkit</span>
+          <button className="w-full py-2.5 px-3 rounded-full bg-[#27272A] hover:bg-[#18181B] text-white flex items-center justify-center gap-2 shadow-sm border-2 border-[#FF5722] transition-all group cursor-pointer">
+            <SparklesIcon className="w-4 h-4 text-white group-hover:rotate-12 transition-transform" />
+            <span className="text-[13px] font-semibold tracking-tight">AI Teacher&apos;s Toolkit</span>
           </button>
         )}
       </div>
 
       {/* Navigation Items */}
-      <nav className="flex-1 flex flex-col gap-1 overflow-y-auto">
+      <nav className="flex-1 flex flex-col gap-1.5 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
             <button
               key={item.name}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+              className={`flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 item.active
-                  ? "bg-[#F3F4F6] text-[#1A1A1A] shadow-xs"
-                  : "text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-50"
+                  ? "bg-[#F4F4F5] text-[#18181B] font-semibold shadow-2xs"
+                  : "text-[#71717A] hover:text-[#18181B] hover:bg-[#FAFAFA]"
               } ${isCollapsed ? "justify-center px-0" : ""}`}
               title={isCollapsed ? item.name : undefined}
             >
-              <Icon className={`w-5 h-5 shrink-0 ${item.active ? "text-[#1A1A1A]" : "text-[#9CA3AF]"}`} />
+              <Icon className={`w-5 h-5 shrink-0 ${item.active ? "text-[#18181B]" : "text-[#71717A]"}`} />
               {!isCollapsed && <span>{item.name}</span>}
             </button>
           );
@@ -95,31 +95,31 @@ export function Sidebar({ forceCollapsed = false }: SidebarProps) {
       </nav>
 
       {/* Footer Section */}
-      <div className="pt-3 border-t border-gray-100 flex flex-col gap-3">
+      <div className="pt-3 border-t border-[#F4F4F5] flex flex-col gap-3">
         {/* Settings */}
         <button
-          className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-[#6B7280] hover:text-[#1A1A1A] hover:bg-gray-50 transition-all ${
+          className={`flex items-center gap-3.5 px-3.5 py-2 rounded-xl text-sm font-medium text-[#71717A] hover:text-[#18181B] hover:bg-[#FAFAFA] transition-all ${
             isCollapsed ? "justify-center px-0" : ""
           }`}
           title={isCollapsed ? "Settings" : undefined}
         >
-          <SettingsIcon className="w-5 h-5 text-[#9CA3AF] shrink-0" />
+          <SettingsIcon className="w-5 h-5 text-[#71717A] shrink-0" />
           {!isCollapsed && <span>Settings</span>}
         </button>
 
-        {/* DPS School Card */}
+        {/* DPS School Card matching Figma */}
         {isCollapsed ? (
           <div className="flex justify-center" title="Delhi Public School, Bokaro Steel City">
-            <DPSLogo className="w-9 h-9" />
+            <DPSLogo className="w-10 h-10" />
           </div>
         ) : (
-          <div className="flex items-center gap-2.5 p-2.5 rounded-2xl bg-[#F8F9FA] border border-[#E9ECEF]">
-            <DPSLogo className="w-9 h-9" />
+          <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-[#F8F9FA] border border-[#E9ECEF]">
+            <DPSLogo className="w-10 h-10" />
             <div className="flex flex-col text-left overflow-hidden">
-              <span className="text-[13px] font-semibold text-[#18181B] truncate leading-tight">
+              <span className="text-[13px] font-bold text-[#18181B] truncate leading-tight">
                 Delhi Public School
               </span>
-              <span className="text-[11px] text-[#71717A] truncate">
+              <span className="text-[11px] text-[#71717A] truncate mt-0.5">
                 Bokaro Steel City
               </span>
             </div>

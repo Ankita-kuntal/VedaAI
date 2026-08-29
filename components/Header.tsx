@@ -30,7 +30,7 @@ export function Header({ onBackClick, title = "Exams" }: HeaderProps) {
   };
 
   return (
-    <header className="w-full h-16 flex items-center justify-between px-4 lg:px-8 border-b border-[#F0F1F5] bg-transparent">
+    <header className="w-full h-14 flex items-center justify-between px-4 lg:px-8 border-b border-[#F0F1F5] bg-transparent shrink-0">
       {/* Desktop Left: Back Arrow + Exams Breadcrumb */}
       <div className="hidden lg:flex items-center gap-3">
         <button

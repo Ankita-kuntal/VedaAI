@@ -40,7 +40,7 @@ export function SidebarCollapseIcon({ className = "w-5 h-5" }: { className?: str
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -57,7 +57,7 @@ export function SidebarExpandIcon({ className = "w-4 h-4" }: { className?: strin
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.2"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -87,7 +87,7 @@ export function HomeIcon({ className = "w-5 h-5" }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -106,7 +106,7 @@ export function ClassroomIcon({ className = "w-5 h-5" }: { className?: string })
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -126,7 +126,7 @@ export function AssignmentsIcon({ className = "w-5 h-5" }: { className?: string 
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -146,14 +146,14 @@ export function ExamsIcon({ className = "w-5 h-5" }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
     >
       <path d="M16 4H18C19.1046 4 20 4.89543 20 6V20C20 21.1046 19.1046 22 18 22H6C4.89543 22 4 21.1046 4 20V6C4 4.89543 4.89543 4 6 4H8" />
       <rect x="8" y="2" width="8" height="4" rx="1.5" />
-      <path d="M9 14L11 16L15 11" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 14L11 16L15 11" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -164,7 +164,7 @@ export function LibraryIcon({ className = "w-5 h-5" }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -181,7 +181,7 @@ export function SettingsIcon({ className = "w-5 h-5" }: { className?: string }) 
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -192,25 +192,31 @@ export function SettingsIcon({ className = "w-5 h-5" }: { className?: string }) 
   );
 }
 
-export function DPSLogo({ className = "w-9 h-9" }: { className?: string }) {
+export function DPSLogo({ className = "w-10 h-10" }: { className?: string }) {
   return (
     <div
-      className={`rounded-full bg-[#F0FDF4] border border-[#BBF7D0] flex items-center justify-center shrink-0 ${className}`}
+      className={`rounded-full bg-white border border-[#E5E7EB] shadow-xs flex items-center justify-center p-1.5 shrink-0 ${className}`}
     >
       <svg
-        viewBox="0 0 36 36"
+        viewBox="0 0 40 40"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         className="w-7 h-7 text-[#15803D]"
       >
-        <circle cx="18" cy="18" r="15" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2 2" />
+        <circle cx="20" cy="20" r="18" stroke="#16A34A" strokeWidth="1.2" strokeDasharray="2 2" />
         <path
-          d="M18 7V29M11 12H25M12 18H24M13 24H23"
-          stroke="currentColor"
+          d="M20 7C14 7 11 11 11 18C11 26 20 32 20 32C20 32 29 26 29 18C29 11 26 7 20 7Z"
+          stroke="#15803D"
           strokeWidth="1.4"
+          fill="#F0FDF4"
+        />
+        <path
+          d="M20 12V25M15 16H25M16 20H24"
+          stroke="#15803D"
+          strokeWidth="1.3"
           strokeLinecap="round"
         />
-        <circle cx="18" cy="15" r="4" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="20" cy="15" r="2.5" fill="#15803D" fillOpacity="0.2" />
       </svg>
     </div>
   );
