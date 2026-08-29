@@ -1,184 +1,278 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/context/AppContext";
 import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
-import { BackArrowIcon, SparkleSingleIcon } from "@/components/icons";
+import { QuestionCard } from "@/components/QuestionCard";
+import { AnswerSheetViewer } from "@/components/AnswerSheetViewer";
+import { UnmatchedAnswersSection } from "@/components/UnmatchedAnswersSection";
+import {
+  SAMPLE_QUESTIONS,
+  SAMPLE_MATCHED_ANSWERS,
+  SAMPLE_UNMATCHED_ANSWERS,
+} from "@/lib/sampleData";
+import { AnswerRegion } from "@/context/AppContext";
 
 export default function ReviewPage() {
   const router = useRouter();
-  const { extractedQuestions, questionPaperMeta, answerSheetMeta } = useApp();
-  const [copied, setCopied] = useState(false);
+  const {
+    extractedQuestions,
+    extractedAnswers,
+    unmatchedAnswers,
+    answerSheetFile,
+  } = useApp();
 
-  const jsonString = extractedQuestions
-    ? JSON.stringify(extractedQuestions, null, 2)
-    : "[]";
+  // Prefer extracted data, fall back to high-fidelity Figma sample data
+  const questions = useMemo(() => {
+    return extractedQuestions && extractedQuestions.length > 0
+      ? extractedQuestions
+      : SAMPLE_QUESTIONS;
+  }, [extractedQuestions]);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(jsonString);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const answers = useMemo(() => {
+    return extractedAnswers && extractedAnswers.length > 0
+      ? extractedAnswers
+      : SAMPLE_MATCHED_ANSWERS;
+  }, [extractedAnswers]);
+
+  const unmatched = useMemo(() => {
+    return unmatchedAnswers && unmatchedAnswers.length > 0
+      ? unmatchedAnswers
+      : SAMPLE_UNMATCHED_ANSWERS;
+  }, [unmatchedAnswers]);
+
+  // Active states
+  const [selectedQuestionId, setSelectedQuestionId] = useState<string>("");
+  const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
+  const [activeRegionIndex, setActiveRegionIndex] = useState<number>(0);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [activeUnmatchedRegion, setActiveUnmatchedRegion] =
+    useState<AnswerRegion | null>(null);
+
+  // Synchronize initial question selection when questions array loads
+  useEffect(() => {
+    if (questions && questions.length > 0 && !selectedQuestionId) {
+      const initialId = questions[0].id;
+      setSelectedQuestionId(initialId);
+      setExpandedQuestions(new Set([initialId]));
+
+      const matched = answers.find(
+        (a) => a.questionId === initialId || a.questionId === `q_${initialId}`
+      );
+      if (matched && matched.regions && matched.regions.length > 0) {
+        if (matched.regions[0].page) {
+          setCurrentPage(matched.regions[0].page);
+        }
+      }
+    }
+  }, [questions, answers, selectedQuestionId]);
+
+  // Mobile segmented toggle: "questions" vs "answers"
+  const [mobileTab, setMobileTab] = useState<"questions" | "answers">(
+    "questions"
+  );
+
+  // Expand / Collapse All
+  const areAllExpanded = expandedQuestions.size === questions.length;
+
+  const handleToggleExpandAll = () => {
+    if (areAllExpanded) {
+      setExpandedQuestions(new Set());
+    } else {
+      setExpandedQuestions(new Set(questions.map((q) => q.id)));
+    }
   };
+
+  const handleSelectQuestion = (qId: string) => {
+    setSelectedQuestionId(qId);
+    setActiveUnmatchedRegion(null);
+    setActiveRegionIndex(0);
+
+    // Expand the selected question card
+    setExpandedQuestions((prev) => {
+      const next = new Set(prev);
+      next.add(qId);
+      return next;
+    });
+
+    // Determine target page from answer region
+    const matched = answers.find(
+      (a) => a.questionId === qId || a.questionId === `q_${qId}`
+    );
+    if (matched && matched.regions && matched.regions.length > 0) {
+      const region = matched.regions[0];
+      if (region.page) {
+        setCurrentPage(region.page);
+      }
+    }
+  };
+
+  const handleToggleQuestionExpand = (qId: string) => {
+    setExpandedQuestions((prev) => {
+      const next = new Set(prev);
+      if (next.has(qId)) {
+        next.delete(qId);
+      } else {
+        next.add(qId);
+      }
+      return next;
+    });
+  };
+
+  // Find active region for the selected question
+  const activeMatchedAnswer = useMemo(() => {
+    return answers.find(
+      (a) =>
+        a.questionId === selectedQuestionId ||
+        a.questionId === `q_${selectedQuestionId}`
+    );
+  }, [answers, selectedQuestionId]);
+
+  const activeQuestionObj = useMemo(() => {
+    return questions.find((q) => q.id === selectedQuestionId);
+  }, [questions, selectedQuestionId]);
+
+  const activeRegion = useMemo<AnswerRegion | null>(() => {
+    if (activeUnmatchedRegion) return null;
+    if (!activeMatchedAnswer || !activeMatchedAnswer.regions) return null;
+    return activeMatchedAnswer.regions[activeRegionIndex] || null;
+  }, [activeMatchedAnswer, activeRegionIndex, activeUnmatchedRegion]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#F0F1F5]">
-      {/* Left Sidebar */}
+      {/* Left Collapsible Sidebar */}
       <Sidebar />
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col my-3 mr-3 ml-3 lg:ml-0 bg-white rounded-3xl shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-[#ECEEF2] overflow-hidden">
+      <main className="flex-1 flex flex-col my-3 mr-3 ml-3 lg:ml-0 bg-white rounded-3xl shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-[#ECEEF2] overflow-hidden relative">
+        {/* Header matching Figma */}
         <Header
-          title="Review Extracted Questions"
+          title="Exams"
           onBackClick={() => router.push("/")}
         />
 
-        <div className="flex-1 overflow-y-auto p-4 lg:p-8">
-          <div className="max-w-4xl mx-auto flex flex-col gap-6">
-            {/* Top Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full bg-[#FFE8DC] text-[#FF5722] text-xs font-semibold">
-                    Step 2 • Review
-                  </span>
-                  <span className="text-xs text-gray-500 font-medium">
-                    gemini-3.6-flash
-                  </span>
-                </div>
-                <h1 className="font-heading text-2xl font-bold text-gray-900 mt-1">
-                  Extracted Questions (Raw JSON)
-                </h1>
-                <p className="text-sm text-gray-500">
-                  {extractedQuestions?.length || 0} questions extracted from{" "}
-                  <span className="font-medium text-gray-800">
-                    {questionPaperMeta?.name || "Uploaded Question Paper"}
-                  </span>
-                </p>
-              </div>
+        {/* Mobile View Toggle Bar matching Phone Screenshot */}
+        <div className="lg:hidden px-4 py-2.5 bg-[#F0F1F5] border-b border-[#ECEEF2] flex items-center justify-center shrink-0">
+          <div className="bg-[#E5E7EB] p-1 rounded-full flex items-center gap-1 w-full max-w-sm">
+            <button
+              onClick={() => setMobileTab("questions")}
+              className={`flex-1 py-2 rounded-full font-heading font-medium text-xs transition-all ${
+                mobileTab === "questions"
+                  ? "bg-[#303030] text-white shadow-sm"
+                  : "text-[#4B5563] hover:text-[#18181B]"
+              }`}
+            >
+              Questions
+            </button>
+            <button
+              onClick={() => setMobileTab("answers")}
+              className={`flex-1 py-2 rounded-full font-heading font-medium text-xs transition-all ${
+                mobileTab === "answers"
+                  ? "bg-[#303030] text-white shadow-sm"
+                  : "text-[#4B5563] hover:text-[#18181B]"
+              }`}
+            >
+              Answer Sheet
+            </button>
+          </div>
+        </div>
 
-              <div className="flex items-center gap-2.5">
-                <button
-                  onClick={() => router.push("/")}
-                  className="px-4 py-2 rounded-xl text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors flex items-center gap-2"
-                >
-                  <BackArrowIcon className="w-4 h-4" />
-                  Upload Again
-                </button>
-                <button
-                  onClick={handleCopy}
-                  className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-[#303030] hover:bg-[#1A1A1A] transition-colors shadow-sm flex items-center gap-2"
-                >
-                  {copied ? (
-                    <>
-                      <svg className="w-4 h-4 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                      <span>Copied JSON!</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                      </svg>
-                      <span>Copy JSON</span>
-                    </>
-                  )}
-                </button>
-              </div>
+        {/* Split Panel Layout (Desktop: Side-by-Side, Mobile: Tab Controlled) */}
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden p-3 sm:p-4 lg:p-5 gap-4">
+          {/* Left Panel: Questions List */}
+          <div
+            className={`flex-1 lg:max-w-[48%] flex flex-col h-full overflow-hidden ${
+              mobileTab === "questions" ? "flex" : "hidden lg:flex"
+            }`}
+          >
+            {/* Panel Header matching Figma */}
+            <div className="flex items-center justify-between pb-3 px-1 shrink-0">
+              <h2 className="font-heading font-bold text-sm sm:text-base text-[#18181B] tracking-tight">
+                Extracted Questions (from question paper)
+              </h2>
+
+              <button
+                onClick={handleToggleExpandAll}
+                className="px-3.5 py-1.5 rounded-full border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-xs transition-all"
+              >
+                {areAllExpanded ? "Collapse All" : "Expand All"}
+              </button>
             </div>
 
-            {/* Quick Metadata Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="bg-[#F8F9FA] rounded-2xl p-4 border border-[#E9ECEF]">
-                <span className="text-xs text-gray-500 font-medium">Question Paper</span>
-                <p className="text-sm font-semibold text-gray-900 truncate mt-0.5">
-                  {questionPaperMeta?.name || "Not uploaded"}
-                </p>
-                <span className="text-xs text-gray-400">
-                  {questionPaperMeta?.size || "—"}
-                </span>
-              </div>
+            {/* Scrollable Questions List */}
+            <div className="flex-1 overflow-y-auto pr-1 sm:pr-2 space-y-3 pb-6">
+              {questions.map((question) => {
+                const matched = answers.find(
+                  (a) =>
+                    a.questionId === question.id ||
+                    a.questionId === question.number ||
+                    a.questionId === `q_${question.id}`
+                );
 
-              <div className="bg-[#F8F9FA] rounded-2xl p-4 border border-[#E9ECEF]">
-                <span className="text-xs text-gray-500 font-medium">Student Answer Sheet</span>
-                <p className="text-sm font-semibold text-gray-900 truncate mt-0.5">
-                  {answerSheetMeta?.name || "Not uploaded"}
-                </p>
-                <span className="text-xs text-gray-400">
-                  {answerSheetMeta?.size || "—"}
-                </span>
-              </div>
+                const isSelected = selectedQuestionId === question.id;
+                const isExpanded = expandedQuestions.has(question.id);
 
-              <div className="bg-[#F8F9FA] rounded-2xl p-4 border border-[#E9ECEF]">
-                <span className="text-xs text-gray-500 font-medium">Total Extracted Items</span>
-                <p className="text-xl font-bold text-[#FF5722] mt-0.5">
-                  {extractedQuestions?.length || 0} Questions
-                </p>
-                <span className="text-xs text-gray-400">
-                  Schema: id, number, subpart, text, page
-                </span>
-              </div>
+                return (
+                  <QuestionCard
+                    key={question.id}
+                    question={question}
+                    matchedAnswer={matched}
+                    isSelected={isSelected}
+                    isExpanded={isExpanded}
+                    activeRegionIndex={
+                      isSelected ? activeRegionIndex : 0
+                    }
+                    onSelect={() => handleSelectQuestion(question.id)}
+                    onToggleExpand={() =>
+                      handleToggleQuestionExpand(question.id)
+                    }
+                    onSelectRegion={(idx) => {
+                      setActiveRegionIndex(idx);
+                      if (matched?.regions?.[idx]?.page) {
+                        setCurrentPage(matched.regions[idx].page);
+                      }
+                    }}
+                    onViewAnswerSheet={() => setMobileTab("answers")}
+                  />
+                );
+              })}
+
+              {/* Unmatched Answers Section at Bottom */}
+              <UnmatchedAnswersSection
+                unmatchedAnswers={unmatched}
+                activeUnmatchedRegion={activeUnmatchedRegion}
+                onSelectUnmatched={(region) => {
+                  setActiveUnmatchedRegion(region);
+                  if (region?.page) {
+                    setCurrentPage(region.page);
+                  }
+                }}
+                onViewAnswerSheet={() => setMobileTab("answers")}
+              />
             </div>
+          </div>
 
-            {/* JSON Code Viewer */}
-            <div className="rounded-2xl bg-[#1E1E24] text-gray-200 p-5 shadow-inner border border-gray-800 relative font-mono text-xs lg:text-sm overflow-x-auto max-h-[500px]">
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-800 text-xs text-gray-400">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500/80 inline-block" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80 inline-block" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500/80 inline-block" />
-                  <span className="ml-2 text-gray-400 font-sans">questions_schema.json</span>
-                </div>
-                <span>{jsonString.length} chars</span>
-              </div>
-
-              {extractedQuestions && extractedQuestions.length > 0 ? (
-                <pre className="text-emerald-400 leading-relaxed">
-                  <code>{jsonString}</code>
-                </pre>
-              ) : (
-                <div className="py-12 text-center text-gray-400">
-                  <p>No questions extracted yet.</p>
-                  <button
-                    onClick={() => router.push("/")}
-                    className="mt-3 px-4 py-1.5 rounded-lg bg-[#303030] text-white text-xs hover:bg-[#404040]"
-                  >
-                    Go back to upload
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Structured Table / List Preview */}
-            {extractedQuestions && extractedQuestions.length > 0 && (
-              <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white">
-                <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 font-semibold text-xs text-gray-700 uppercase tracking-wider">
-                  Structured Questions Summary
-                </div>
-                <div className="divide-y divide-gray-100 max-h-[400px] overflow-y-auto">
-                  {extractedQuestions.map((q, idx) => (
-                    <div key={q.id || idx} className="p-4 hover:bg-gray-50/80 transition-colors flex items-start gap-4">
-                      <div className="px-2.5 py-1 rounded-lg bg-[#FFE8DC] text-[#FF5722] font-bold text-xs shrink-0">
-                        {q.number}{q.subpart ? `(${q.subpart})` : ""}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-800 font-medium whitespace-pre-wrap leading-relaxed">
-                          {q.text}
-                        </p>
-                        <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
-                          <span>ID: <code className="text-gray-600 font-mono">{q.id}</code></span>
-                          <span>•</span>
-                          <span>Page {q.page}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+          {/* Right Panel: Answer Sheet Viewer */}
+          <div
+            className={`flex-1 flex flex-col h-full overflow-hidden ${
+              mobileTab === "answers" ? "flex" : "hidden lg:flex"
+            }`}
+          >
+            <AnswerSheetViewer
+              file={answerSheetFile}
+              activeRegion={activeRegion}
+              activeQuestionNumber={
+                activeQuestionObj
+                  ? `${activeQuestionObj.number}${activeQuestionObj.subpart || ""}`
+                  : "1"
+              }
+              unmatchedRegion={activeUnmatchedRegion}
+              currentPage={currentPage}
+              onPageChange={(p) => setCurrentPage(p)}
+              totalPages={1}
+            />
           </div>
         </div>
       </main>

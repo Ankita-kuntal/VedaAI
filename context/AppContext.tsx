@@ -16,6 +16,25 @@ export interface Question {
   page: number;
 }
 
+export interface AnswerRegion {
+  page: number;
+  bbox: [number, number, number, number]; // [ymin, xmin, ymax, xmax] normalized 0-1000
+}
+
+export interface MatchedAnswer {
+  questionId: string;
+  answered: boolean;
+  extractedText: string;
+  regions: AnswerRegion[];
+  feedback?: string;
+  score?: string;
+}
+
+export interface UnmatchedAnswer {
+  extractedText: string;
+  regions: AnswerRegion[];
+}
+
 export interface FileMeta {
   name: string;
   size: string;
@@ -23,20 +42,33 @@ export interface FileMeta {
   type: string;
 }
 
+export type ExtractionStage =
+  | "idle"
+  | "uploading"
+  | "extracting-questions"
+  | "extracting-answers"
+  | "mapping-answers";
+
 interface AppContextType {
   questionPaperFile: File | null;
   questionPaperMeta: FileMeta | null;
   answerSheetFile: File | null;
   answerSheetMeta: FileMeta | null;
   extractedQuestions: Question[] | null;
+  extractedAnswers: MatchedAnswer[] | null;
+  unmatchedAnswers: UnmatchedAnswer[] | null;
   isExtracting: boolean;
-  extractionStage: "idle" | "uploading" | "extracting";
+  extractionStage: ExtractionStage;
   errorMessage: string | null;
   setQuestionPaper: (file: File | null, meta?: Partial<FileMeta>) => void;
   setAnswerSheet: (file: File | null, meta?: Partial<FileMeta>) => void;
   setExtractedQuestions: (questions: Question[] | null) => void;
+  setExtractedAnswers: (
+    answers: MatchedAnswer[] | null,
+    unmatched?: UnmatchedAnswer[] | null
+  ) => void;
   setIsExtracting: (val: boolean) => void;
-  setExtractionStage: (stage: "idle" | "uploading" | "extracting") => void;
+  setExtractionStage: (stage: ExtractionStage) => void;
   setErrorMessage: (msg: string | null) => void;
   resetAll: () => void;
 }
@@ -55,16 +87,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [answerSheetFile, setAnswerSheetFile] = useState<File | null>(null);
   const [answerSheetMeta, setAnswerSheetMeta] = useState<FileMeta | null>(null);
   const [extractedQuestions, setExtractedQuestionsState] = useState<Question[] | null>(null);
+  const [extractedAnswers, setExtractedAnswersState] = useState<MatchedAnswer[] | null>(null);
+  const [unmatchedAnswers, setUnmatchedAnswersState] = useState<UnmatchedAnswer[] | null>(null);
   const [isExtracting, setIsExtracting] = useState<boolean>(false);
-  const [extractionStage, setExtractionStage] = useState<"idle" | "uploading" | "extracting">("idle");
+  const [extractionStage, setExtractionStage] = useState<ExtractionStage>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Load persisted questions and raw files on mount
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem("vedaai_extracted_questions");
-      if (saved) {
-        setExtractedQuestionsState(JSON.parse(saved));
+      const savedQ = sessionStorage.getItem("vedaai_extracted_questions");
+      if (savedQ) {
+        setExtractedQuestionsState(JSON.parse(savedQ));
+      }
+      const savedA = sessionStorage.getItem("vedaai_extracted_answers");
+      if (savedA) {
+        setExtractedAnswersState(JSON.parse(savedA));
+      }
+      const savedU = sessionStorage.getItem("vedaai_unmatched_answers");
+      if (savedU) {
+        setUnmatchedAnswersState(JSON.parse(savedU));
       }
       const qMeta = sessionStorage.getItem("vedaai_qp_meta");
       if (qMeta) {
@@ -169,12 +211,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   };
 
+  const setExtractedAnswers = (
+    answers: MatchedAnswer[] | null,
+    unmatched?: UnmatchedAnswer[] | null
+  ) => {
+    setExtractedAnswersState(answers);
+    setUnmatchedAnswersState(unmatched || null);
+    try {
+      if (answers) {
+        sessionStorage.setItem("vedaai_extracted_answers", JSON.stringify(answers));
+      } else {
+        sessionStorage.removeItem("vedaai_extracted_answers");
+      }
+      if (unmatched) {
+        sessionStorage.setItem("vedaai_unmatched_answers", JSON.stringify(unmatched));
+      } else {
+        sessionStorage.removeItem("vedaai_unmatched_answers");
+      }
+    } catch {}
+  };
+
   const resetAll = () => {
     setQuestionPaperFile(null);
     setQuestionPaperMeta(null);
     setAnswerSheetFile(null);
     setAnswerSheetMeta(null);
     setExtractedQuestionsState(null);
+    setExtractedAnswersState(null);
+    setUnmatchedAnswersState(null);
     setIsExtracting(false);
     setExtractionStage("idle");
     setErrorMessage(null);
@@ -192,12 +256,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         answerSheetFile,
         answerSheetMeta,
         extractedQuestions,
+        extractedAnswers,
+        unmatchedAnswers,
         isExtracting,
         extractionStage,
         errorMessage,
         setQuestionPaper,
         setAnswerSheet,
         setExtractedQuestions,
+        setExtractedAnswers,
         setIsExtracting,
         setExtractionStage,
         setErrorMessage,

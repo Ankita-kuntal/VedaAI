@@ -23,6 +23,7 @@ export default function UploadPage() {
     setQuestionPaper,
     setAnswerSheet,
     setExtractedQuestions,
+    setExtractedAnswers,
     setIsExtracting,
     setExtractionStage,
     setErrorMessage,
@@ -40,6 +41,10 @@ export default function UploadPage() {
       setToastError("Question paper file is missing. Please select your question paper file.");
       return;
     }
+    if (!answerSheetFile) {
+      setToastError("Answer sheet file is missing. Please select your answer sheet file.");
+      return;
+    }
 
     setToastError(null);
     setErrorMessage(null);
@@ -47,37 +52,64 @@ export default function UploadPage() {
     setExtractionStage("uploading");
 
     try {
-      // Show uploading phase
+      // Step 1: Uploading stage
       await new Promise((res) => setTimeout(res, 600));
-      setExtractionStage("extracting");
 
-      // Build formData with the genuine file
-      const formData = new FormData();
-      formData.append("file", questionPaperFile);
+      // Step 2: Extracting Questions
+      setExtractionStage("extracting-questions");
+      const qpFormData = new FormData();
+      qpFormData.append("file", questionPaperFile);
 
-      const response = await fetch("/api/extract-questions", {
+      const qpResponse = await fetch("/api/extract-questions", {
         method: "POST",
-        body: formData,
+        body: qpFormData,
       });
 
-      const data = await response.json();
+      const qpData = await qpResponse.json();
 
-      if (!response.ok || !data.success) {
+      if (!qpResponse.ok || !qpData.success) {
         throw new Error(
-          data.error || "Failed to extract questions. Please verify your file."
+          qpData.error || "Failed to extract questions from the question paper."
         );
       }
 
-      // Store in context & redirect to review
-      setExtractedQuestions(data.questions);
+      const extractedQuestionsList = qpData.questions || [];
+      setExtractedQuestions(extractedQuestionsList);
+
+      // Step 3: Extracting Answers
+      setExtractionStage("extracting-answers");
+      const asFormData = new FormData();
+      asFormData.append("file", answerSheetFile);
+      asFormData.append("questions", JSON.stringify(extractedQuestionsList));
+
+      const asResponse = await fetch("/api/extract-answers", {
+        method: "POST",
+        body: asFormData,
+      });
+
+      const asData = await asResponse.json();
+
+      if (!asResponse.ok || !asData.success) {
+        throw new Error(
+          asData.error || "Failed to extract and map answers from the student answer sheet."
+        );
+      }
+
+      // Step 4: Mapping Answers
+      setExtractionStage("mapping-answers");
+      setExtractedAnswers(asData.answers || [], asData.unmatchedAnswers || []);
+
+      await new Promise((res) => setTimeout(res, 600));
+
+      // Redirect to review page
       setIsExtracting(false);
       setExtractionStage("idle");
       router.push("/review");
     } catch (err: any) {
-      console.error("Extraction error:", err);
+      console.error("Extraction & mapping error:", err);
       setIsExtracting(false);
       setExtractionStage("idle");
-      const msg = err.message || "An error occurred during question extraction.";
+      const msg = err.message || "An error occurred during question and answer extraction.";
       setToastError(msg);
       setErrorMessage(msg);
     }
@@ -110,14 +142,14 @@ export default function UploadPage() {
       <Sidebar forceCollapsed={isExtracting} />
 
       {/* Main Container */}
-      <main className="flex-1 flex flex-col my-3 mr-3 ml-3 lg:ml-0 bg-white rounded-3xl shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-[#ECEEF2] overflow-hidden relative">
+      <main className="flex-1 flex flex-col my-3 mr-3 sm:mr-3 ml-3 lg:ml-0 bg-white rounded-3xl shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-[#ECEEF2] overflow-hidden relative">
         {/* Header */}
         <Header title="Exams" />
 
         {/* Content View: Loading or Upload */}
         <div className="flex-1 flex flex-col overflow-y-auto">
           {isExtracting ? (
-            <LoadingState stage={extractionStage === "uploading" ? "uploading" : "extracting"} />
+            <LoadingState stage={extractionStage} />
           ) : (
             <div className="w-full flex-1 flex flex-col items-center justify-between px-4 py-6 sm:px-8 sm:py-8 lg:py-10 max-w-4xl mx-auto">
               {/* Top Title & Subtitle */}

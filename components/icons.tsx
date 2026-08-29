@@ -475,3 +475,85 @@ export function AnimatedSparkleGroup({ className = "w-36 h-36" }: { className?: 
     </div>
   );
 }
+
+export function ZoomInIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+export function ZoomOutIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+export function ChevronLeftIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
+
+export function ChevronRightIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+
+export function ChevronUpIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  );
+}
+
