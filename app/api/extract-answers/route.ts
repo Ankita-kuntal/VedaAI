@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import {
+  generateContentWithFallback,
+  parseGeminiError,
+} from "@/lib/gemini";
 
 export const maxDuration = 60; // Allow up to 60s for Gemini processing
 
@@ -26,7 +30,18 @@ interface ParsedAnswersResult {
 }
 
 const RETRY_SUFFIX =
-  '\n\nIMPORTANT: Your previous output was invalid JSON. You must return ONLY the raw JSON, no markdown formatting, no backticks, no explanations. Schema: [{"questionId": "11a", "answered": true, "extractedText": "...", "regions": [{"page": 1, "bbox": [ymin,xmin,ymax,xmax]}]}], plus a separate array "unmatchedAnswers": [{"extractedText": "...", "regions": [...]}]';
+  '\n\nIMPORTANT: Your previous output was invalid JSON. Return ONLY the raw JSON object with keys "answers" and "unmatchedAnswers", no markdown formatting, no code fences.';
+
+function normalizeBbox(raw: any): [number, number, number, number] {
+  if (Array.isArray(raw) && raw.length >= 4) {
+    const ymin = Math.max(0, Math.min(1000, Number(raw[0]) || 0));
+    const xmin = Math.max(0, Math.min(1000, Number(raw[1]) || 0));
+    const ymax = Math.max(0, Math.min(1000, Number(raw[2]) || 1000));
+    const xmax = Math.max(0, Math.min(1000, Number(raw[3]) || 1000));
+    return [ymin, xmin, ymax, xmax];
+  }
+  return [0, 0, 1000, 1000];
+}
 
 function cleanAndParseAnswersJSON(rawText: string): ParsedAnswersResult | null {
   try {
@@ -37,93 +52,86 @@ function cleanAndParseAnswersJSON(rawText: string): ParsedAnswersResult | null {
     }
     text = text.trim();
 
-    // Look for JSON object or array
-    const firstBrace = text.indexOf("{");
+    // Check if the response is wrapped in an array or an object
     const firstBracket = text.indexOf("[");
+    const firstBrace = text.indexOf("{");
 
-    let parsed: any = null;
+    let isTopLevelArray = false;
+    let startIdx = -1;
+    let endIdx = -1;
 
-    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
-      // It might be an object { answers: [...], unmatchedAnswers: [...] } or { matchedAnswers: [...], ... }
-      const lastBrace = text.lastIndexOf("}");
-      if (lastBrace !== -1 && lastBrace > firstBrace) {
-        const jsonStr = text.substring(firstBrace, lastBrace + 1);
-        parsed = JSON.parse(jsonStr);
-      }
-    } else if (firstBracket !== -1) {
-      // It might be an array [...] or array with additional content
-      const lastBracket = text.lastIndexOf("]");
-      if (lastBracket !== -1 && lastBracket > firstBracket) {
-        const jsonStr = text.substring(firstBracket, lastBracket + 1);
-        parsed = JSON.parse(jsonStr);
-      }
+    if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+      isTopLevelArray = true;
+      startIdx = firstBracket;
+      endIdx = text.lastIndexOf("]");
+    } else if (firstBrace !== -1) {
+      startIdx = firstBrace;
+      endIdx = text.lastIndexOf("}");
     }
 
-    if (!parsed) {
-      parsed = JSON.parse(text);
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      text = text.substring(startIdx, endIdx + 1);
     }
 
-    let answersRaw: any[] = [];
-    let unmatchedRaw: any[] = [];
+    const parsed = JSON.parse(text);
+
+    let rawAnswers: any[] = [];
+    let rawUnmatched: any[] = [];
 
     if (Array.isArray(parsed)) {
-      answersRaw = parsed;
+      rawAnswers = parsed;
     } else if (typeof parsed === "object" && parsed !== null) {
-      answersRaw =
-        parsed.answers ||
-        parsed.matchedAnswers ||
-        parsed.matched_answers ||
-        parsed.questions ||
-        [];
-      unmatchedRaw =
-        parsed.unmatchedAnswers ||
-        parsed.unmatched_answers ||
-        parsed.unmatched ||
-        [];
+      if (Array.isArray(parsed.answers)) {
+        rawAnswers = parsed.answers;
+      } else if (Array.isArray(parsed.matchedAnswers)) {
+        rawAnswers = parsed.matchedAnswers;
+      } else if (Array.isArray(parsed.questions)) {
+        rawAnswers = parsed.questions;
+      }
+
+      if (Array.isArray(parsed.unmatchedAnswers)) {
+        rawUnmatched = parsed.unmatchedAnswers;
+      } else if (Array.isArray(parsed.unmatched)) {
+        rawUnmatched = parsed.unmatched;
+      }
     }
 
-    const answers: MatchedAnswer[] = answersRaw.map((item: any, idx: number) => {
+    const answers: MatchedAnswer[] = rawAnswers.map((item: any) => {
       const regionsRaw = Array.isArray(item.regions) ? item.regions : [];
       const regions: AnswerRegion[] = regionsRaw.map((r: any) => ({
         page: Number(r.page ?? 1),
-        bbox:
-          Array.isArray(r.bbox) && r.bbox.length === 4
-            ? [
-                Number(r.bbox[0]),
-                Number(r.bbox[1]),
-                Number(r.bbox[2]),
-                Number(r.bbox[3]),
-              ]
-            : [0, 0, 1000, 1000],
+        bbox: normalizeBbox(r.bbox),
       }));
 
+      // If no regions provided, provide a default fallback region
+      if (regions.length === 0 && item.answered !== false) {
+        regions.push({
+          page: Number(item.page ?? 1),
+          bbox: item.bbox ? normalizeBbox(item.bbox) : [0, 0, 1000, 1000],
+        });
+      }
+
       return {
-        questionId: String(item.questionId ?? item.id ?? `q_${idx + 1}`),
-        answered: Boolean(
-          item.answered ??
-            (item.extractedText && item.extractedText.trim().length > 0)
-        ),
-        extractedText: String(item.extractedText ?? item.text ?? ""),
+        questionId: String(item.questionId ?? item.id ?? ""),
+        answered: item.answered !== false && Boolean(item.extractedText && item.extractedText.trim().length > 0),
+        extractedText: String(item.extractedText ?? item.text ?? item.answer ?? ""),
         regions,
       };
     });
 
-    const unmatchedAnswers: UnmatchedAnswer[] = (
-      Array.isArray(unmatchedRaw) ? unmatchedRaw : []
-    ).map((item: any) => {
+    const unmatchedAnswers: UnmatchedAnswer[] = rawUnmatched.map((item: any) => {
       const regionsRaw = Array.isArray(item.regions) ? item.regions : [];
       const regions: AnswerRegion[] = regionsRaw.map((r: any) => ({
         page: Number(r.page ?? 1),
-        bbox:
-          Array.isArray(r.bbox) && r.bbox.length === 4
-            ? [
-                Number(r.bbox[0]),
-                Number(r.bbox[1]),
-                Number(r.bbox[2]),
-                Number(r.bbox[3]),
-              ]
-            : [0, 0, 1000, 1000],
+        bbox: normalizeBbox(r.bbox),
       }));
+
+      if (regions.length === 0) {
+        regions.push({
+          page: Number(item.page ?? 1),
+          bbox: item.bbox ? normalizeBbox(item.bbox) : [0, 0, 1000, 1000],
+        });
+      }
 
       return {
         extractedText: String(item.extractedText ?? item.text ?? ""),
@@ -133,7 +141,12 @@ function cleanAndParseAnswersJSON(rawText: string): ParsedAnswersResult | null {
 
     return { answers, unmatchedAnswers };
   } catch (err) {
-    console.error("Answers JSON parse error:", err, "Raw response was:", rawText);
+    console.error(
+      "Answers JSON parse error:",
+      err,
+      "Raw response was:",
+      rawText
+    );
     return null;
   }
 }
@@ -186,9 +199,65 @@ export async function POST(request: NextRequest) {
       file.type || (file.name.endsWith(".pdf") ? "application/pdf" : "image/jpeg");
 
     const ai = new GoogleGenAI({ apiKey });
-    const modelName = "gemini-3.6-flash";
 
-    const prompt = `You are given a list of questions: ${questionsJsonStr}. Analyze this handwritten student answer sheet. For each question, find the corresponding written answer, matching by visible question number/label first, then by content if no label is visible. For each matched answer, extract the answer text and return a tight bounding box around ONLY the handwritten answer region (not the whole page), using normalized coordinates on a 0-1000 scale as [ymin, xmin, ymax, xmax], and the page number it appears on. If an answer spans multiple pages, return multiple region objects. If a question has no matching answer anywhere, mark it unanswered. If any handwritten content doesn't match any known question, include it separately as an unmatched answer. Return ONLY valid JSON, no markdown, in this exact schema: [{"questionId": "11a", "answered": true, "extractedText": "...", "regions": [{"page": 1, "bbox": [ymin,xmin,ymax,xmax]}]}], plus a separate array "unmatchedAnswers": [{"extractedText": "...", "regions": [...]}]`;
+    const prompt = `You are an expert AI assessment analyzer evaluating a student's handwritten answer sheet.
+You are given the list of questions from the question paper:
+${questionsJsonStr}
+
+CRITICAL RULES:
+1. OUT-OF-ORDER & NON-SEQUENTIAL MATCHING:
+   - Students frequently write answers out of order (e.g. Question 2 before Question 1, or Question 11b before 11a).
+   - Match each handwritten answer strictly to its corresponding question in the questions list using visible question labels (e.g. "Ans 1", "Q2", "11(a)", "11(b)", "3.", etc.) and the semantic meaning/content of the handwriting.
+   - Do NOT assume answers appear in sequential top-to-bottom order.
+   - Set "questionId" in the output to the EXACT "id" value from the provided questions list (e.g. "1", "2", "11a", "11b").
+
+2. STRICT ISOLATION OF SUBPARTS & INDIVIDUAL LINES:
+   - Each subpart (e.g., 11(a) vs 11(b)) is a COMPLETELY SEPARATE, DISTINCT QUESTION.
+   - For subpart 11(a): Extract ONLY the line(s) answering 11(a). Its bounding box MUST NOT include or touch the 11(b) line.
+   - For subpart 11(b): Extract ONLY the line(s) answering 11(b). Its "ymin" MUST start right at the top of the 11(b) text line, NOT at the 11(a) line. Its "ymax" MUST be the bottom of the 11(b) line. It MUST NOT include or bleed into the 11(a) line.
+   - NEVER create a bounding box that covers multiple distinct questions or subparts together. Every question's bounding box MUST be independent.
+
+3. BOUNDING BOX ACCURACY & PADDING (0-1000 Normalized Scale):
+   - Return tight, clean bounding boxes as [ymin, xmin, ymax, xmax] in normalized 0-1000 coordinates where [0,0] is the top-left corner of the page and [1000,1000] is the bottom-right corner.
+   - HORIZONTAL BOUNDS: "xmin" MUST start cleanly at the leftmost character of the handwriting (including the question/answer number prefix like "1." or "Ans 1:" or "11(b)"). Do NOT cut into words or start mid-word. "xmax" MUST encompass the rightmost character of the line.
+   - VERTICAL BOUNDS: "ymin" is just above the highest ascender/capital letter of this specific answer's text, and "ymax" is just below the lowest descender of this specific answer's text.
+   - For short/single-line answers (like "2. x = 5" or "11(b) Examples: 2 and 3"), ensure the bounding box has adequate vertical height (e.g. height of at least 35-50 normalized units / ~4-5% of page) so the full line is cleanly enclosed and not sliced through.
+
+4. MULTI-PAGE & MULTI-BLOCK ANSWERS:
+   - If an answer continues across multiple pages, return an array in "regions" with an object for each page: [{"page": 1, "bbox": [ymin, xmin, ymax, xmax]}, {"page": 2, "bbox": [ymin, xmin, ymax, xmax]}].
+   - If an answer is on a single page, return an array with one region object: [{"page": 1, "bbox": [ymin, xmin, ymax, xmax]}].
+
+5. UNANSWERED & UNMATCHED CONTENT:
+   - If a question from the list is not answered anywhere on the sheet, return {"questionId": "<id>", "answered": false, "extractedText": "", "regions": []}.
+   - If there is student handwriting that does not correspond to any known question in the list, place it in the "unmatchedAnswers" array.
+
+Return ONLY valid JSON (no markdown fences, no extra text) with this exact schema:
+{
+  "answers": [
+    {
+      "questionId": "1",
+      "answered": true,
+      "extractedText": "full transcript of handwritten answer",
+      "regions": [
+        {
+          "page": 1,
+          "bbox": [ymin, xmin, ymax, xmax]
+        }
+      ]
+    }
+  ],
+  "unmatchedAnswers": [
+    {
+      "extractedText": "unmatched handwriting transcript",
+      "regions": [
+        {
+          "page": 1,
+          "bbox": [ymin, xmin, ymax, xmax]
+        }
+      ]
+    }
+  ]
+}`;
 
     const filePart = {
       inlineData: {
@@ -202,33 +271,12 @@ export async function POST(request: NextRequest) {
     };
 
     console.log("=== Gemini API Request Details (Extract Answers) ===");
-    console.log(`[Gemini Request] Model: ${modelName}`);
     console.log(`[Gemini Request] File Name: ${file.name}`);
     console.log(
       `[Gemini Request] File Size (FormData): ${file.size} bytes (${(
         file.size / 1024
       ).toFixed(2)} KB)`
     );
-    console.log(
-      `[Gemini Request] Buffer Length: ${buffer.length} bytes (${(
-        buffer.length / 1024
-      ).toFixed(2)} KB)`
-    );
-    console.log(`[Gemini Request] Detected mimeType: ${mimeType}`);
-    console.log(
-      `[Gemini Request] Base64 payload length: ${base64Data.length} chars (${(
-        base64Data.length / 1024
-      ).toFixed(2)} KB)`
-    );
-    console.log(
-      `[Gemini Request] Questions Context Length: ${questionsJsonStr.length} chars`
-    );
-    console.log(
-      `[Gemini Request] generationConfig / config:`,
-      JSON.stringify(requestConfig, null, 2)
-    );
-    console.log(`[Gemini Request] Prompt snippet: ${prompt.slice(0, 160)}...`);
-    console.log("====================================================");
 
     if (buffer.length === 0) {
       return NextResponse.json(
@@ -240,36 +288,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Attempt 1
     let parsedResult: ParsedAnswersResult | null = null;
     let rawResponse = "";
+    let modelUsed = "";
+    let lastApiError: any = null;
 
     try {
-      const result = await ai.models.generateContent({
-        model: modelName,
+      const genResult = await generateContentWithFallback(ai, {
         contents: [filePart, prompt],
         config: requestConfig,
+        label: "Extract Answers Attempt 1",
       });
-      rawResponse = result.text || "";
-      console.log(
-        `[Gemini Answer Extraction Attempt 1] Output length: ${rawResponse.length} chars`
-      );
+      rawResponse = genResult.text;
+      modelUsed = genResult.modelUsed;
       parsedResult = cleanAndParseAnswersJSON(rawResponse);
     } catch (apiError: any) {
+      lastApiError = apiError;
       console.warn(
         "First Gemini answers extraction attempt error:",
         apiError?.message || apiError
       );
-      if (apiError?.status || apiError?.errorDetails) {
-        console.warn(
-          "Gemini Error Details:",
-          JSON.stringify(
-            { status: apiError?.status, details: apiError?.errorDetails },
-            null,
-            2
-          )
-        );
-      }
     }
 
     // Attempt 2 (Retry with stricter prompt if parsing failed)
@@ -282,17 +320,16 @@ export async function POST(request: NextRequest) {
         "Retrying answer extraction with stricter prompt reminder..."
       );
       try {
-        const retryResult = await ai.models.generateContent({
-          model: modelName,
+        const retryResult = await generateContentWithFallback(ai, {
           contents: [filePart, prompt + RETRY_SUFFIX],
           config: requestConfig,
+          label: "Extract Answers Attempt 2",
         });
-        rawResponse = retryResult.text || "";
-        console.log(
-          `[Gemini Answer Extraction Attempt 2] Output length: ${rawResponse.length} chars`
-        );
+        rawResponse = retryResult.text;
+        modelUsed = retryResult.modelUsed;
         parsedResult = cleanAndParseAnswersJSON(rawResponse);
       } catch (retryError: any) {
+        lastApiError = retryError;
         console.error(
           "Retry Gemini answer extraction attempt error:",
           retryError?.message || retryError
@@ -301,6 +338,32 @@ export async function POST(request: NextRequest) {
     }
 
     if (!parsedResult) {
+      if (lastApiError) {
+        const parsed = parseGeminiError(lastApiError);
+        if (parsed.isQuotaExceeded) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Gemini API Quota Exceeded (429): You have reached the free tier limit. Please wait a moment or update GEMINI_MODEL in .env.local.",
+              details: parsed.message,
+            },
+            { status: 429 }
+          );
+        }
+        if (parsed.isOverloaded) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Gemini model is currently experiencing high demand (503). Please retry shortly.",
+              details: parsed.message,
+            },
+            { status: 503 }
+          );
+        }
+      }
+
       return NextResponse.json(
         {
           success: false,
@@ -312,6 +375,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log("=== Extracted Answers from Gemini ===");
+    console.log(JSON.stringify(parsedResult, null, 2));
+
     return NextResponse.json({
       success: true,
       answers: parsedResult.answers,
@@ -319,9 +385,23 @@ export async function POST(request: NextRequest) {
       count: parsedResult.answers.length,
       unmatchedCount: parsedResult.unmatchedAnswers.length,
       fileName: file.name,
+      modelUsed,
     });
   } catch (error: any) {
     console.error("API extract-answers error:", error);
+    const parsed = parseGeminiError(error);
+    if (parsed.isQuotaExceeded) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Gemini API Quota Exceeded (429): Free tier limit reached. Please wait or set GEMINI_MODEL in .env.local.",
+          details: parsed.message,
+        },
+        { status: 429 }
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,

@@ -23,6 +23,100 @@ const Page = dynamic(
   { ssr: false }
 );
 
+// Helper to compute clean, generously padded bounding box styles with a comfortable min-height
+// and neighbor midpoint clamping so adjacent lines (e.g. 11a and 11b) never overlap or bleed into each other
+function computePaddedBoxStyle(
+  bbox: [number, number, number, number],
+  allRegions?: AnswerRegion[],
+  pageNumber: number = 1
+) {
+  const [ymin, xmin, ymax, xmax] = bbox;
+  const rawTop = ymin / 10;
+  const rawLeft = xmin / 10;
+  const rawH = (ymax - ymin) / 10;
+  const rawW = (xmax - xmin) / 10;
+  const thisBottom = rawTop + rawH;
+
+  // 1. Horizontal padding is generous (~1.6% / ~12-16px) to cleanly frame line starts and ends
+  const horizontalPadding = 1.6;
+  const left = Math.max(0, rawLeft - horizontalPadding);
+  const width = Math.min(100 - left, rawW + horizontalPadding * 2);
+
+  // 2. Base vertical padding: small and clean (~0.45% / ~4-5px)
+  const baseVerticalPadding = 0.45;
+  const targetMinHeight = 3.6; // ~28-34px comfortable line height
+
+  // 3. Find closest neighbor line above and below on the same page
+  let maxTopBound = 0;
+  let minBottomBound = 100;
+
+  if (allRegions && allRegions.length > 0) {
+    for (const other of allRegions) {
+      const otherPage = other.page || 1;
+      if (otherPage !== pageNumber) continue;
+
+      const [oYmin, , oYmax] = other.bbox;
+      if (oYmin === ymin && oYmax === ymax) continue;
+
+      const oTop = oYmin / 10;
+      const oBottom = oYmax / 10;
+
+      // Neighbor above
+      if (oBottom <= rawTop) {
+        const midpoint = (oBottom + rawTop) / 2;
+        if (midpoint > maxTopBound) {
+          maxTopBound = midpoint;
+        }
+      }
+
+      // Neighbor below (e.g. 11b is below 11a)
+      if (oTop >= thisBottom) {
+        const midpoint = (thisBottom + oTop) / 2;
+        if (midpoint < minBottomBound) {
+          minBottomBound = midpoint;
+        }
+      }
+    }
+  }
+
+  // Desired top and bottom with vertical padding
+  let desiredTop = rawTop - baseVerticalPadding;
+  let desiredBottom = thisBottom + baseVerticalPadding;
+
+  // Expand if less than min height
+  if (desiredBottom - desiredTop < targetMinHeight) {
+    const deficit = targetMinHeight - (desiredBottom - desiredTop);
+    desiredTop -= deficit / 2;
+    desiredBottom += deficit / 2;
+  }
+
+  // Clamp to neighbor midpoints so we never touch or bleed into adjacent lines
+  if (desiredTop < maxTopBound) {
+    desiredTop = maxTopBound + 0.1;
+  }
+  if (desiredBottom > minBottomBound) {
+    desiredBottom = minBottomBound - 0.1;
+  }
+
+  // Fallback sanity check
+  if (desiredBottom <= desiredTop) {
+    desiredTop = rawTop;
+    desiredBottom = thisBottom;
+  }
+
+  const height = Math.max(1, desiredBottom - desiredTop);
+  const top = Math.max(0, desiredTop);
+
+  return {
+    top: `${top.toFixed(2)}%`,
+    left: `${left.toFixed(2)}%`,
+    height: `${height.toFixed(2)}%`,
+    width: `${width.toFixed(2)}%`,
+    raw: { top: rawTop, left: rawLeft, height: rawH, width: rawW },
+    padded: { top, left, height, width },
+  };
+}
+
 interface AnswerSheetViewerProps {
   file: File | null;
   activeRegion: AnswerRegion | null;
@@ -31,6 +125,7 @@ interface AnswerSheetViewerProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   totalPages?: number;
+  allRegions?: AnswerRegion[];
 }
 
 export function AnswerSheetViewer({
@@ -41,6 +136,7 @@ export function AnswerSheetViewer({
   currentPage,
   onPageChange,
   totalPages = 1,
+  allRegions = [],
 }: AnswerSheetViewerProps) {
   const router = useRouter();
   const [zoom, setZoom] = useState<number>(100);
@@ -51,10 +147,23 @@ export function AnswerSheetViewer({
   const [pdfWorkerReady, setPdfWorkerReady] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState<number>(640);
+  const [imageDimensions, setImageDimensions] = useState<{
+    naturalWidth: number;
+    naturalHeight: number;
+    displayedWidth: number;
+    displayedHeight: number;
+  } | null>(null);
+
+  // Compute rendered width: 100% zoom fits the container width cleanly (fit-to-width)
+  const renderedWidth = Math.max(
+    320,
+    Math.round(containerWidth * (zoom / 100))
+  );
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const activeOverlayRef = useRef<HTMLDivElement | null>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
 
   // Measure container width for responsive fit-to-width
   useEffect(() => {
@@ -75,6 +184,122 @@ export function AnswerSheetViewer({
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
+
+  // Update and track image element rendered dimensions
+  const updateImageDimensions = useCallback(() => {
+    if (!imageRef.current) return null;
+    const img = imageRef.current;
+    const dims = {
+      naturalWidth: img.naturalWidth || 0,
+      naturalHeight: img.naturalHeight || 0,
+      displayedWidth: img.clientWidth || img.offsetWidth || 0,
+      displayedHeight: img.clientHeight || img.offsetHeight || 0,
+    };
+    if (dims.naturalWidth > 0 && dims.displayedWidth > 0) {
+      setImageDimensions(dims);
+    }
+    return dims;
+  }, []);
+
+  // Observe image resize events (e.g. when zooming or resizing browser window)
+  useEffect(() => {
+    if (!imageRef.current) return;
+    const img = imageRef.current;
+    const observer = new ResizeObserver(() => {
+      updateImageDimensions();
+    });
+    observer.observe(img);
+    return () => observer.disconnect();
+  }, [isImage, fileUrl, updateImageDimensions]);
+
+  // Comprehensive diagnostic coordinate math logging for images & PDFs
+  useEffect(() => {
+    const region = activeRegion || unmatchedRegion;
+    if (!region) return;
+
+    const [ymin, xmin, ymax, xmax] = region.bbox;
+    const pageNum = region.page || 1;
+    const paddedBox = computePaddedBoxStyle(region.bbox, allRegions, pageNum);
+
+    if (isImage && imageRef.current) {
+      const img = imageRef.current;
+      const naturalW = img.naturalWidth;
+      const naturalH = img.naturalHeight;
+      const displayedW = img.clientWidth || img.offsetWidth;
+      const displayedH = img.clientHeight || img.offsetHeight;
+
+      const pixelTop = (paddedBox.padded.top / 100) * displayedH;
+      const pixelLeft = (paddedBox.padded.left / 100) * displayedW;
+      const pixelWidth = (paddedBox.padded.width / 100) * displayedW;
+      const pixelHeight = (paddedBox.padded.height / 100) * displayedH;
+
+      console.log("📐 [AnswerSheetViewer - Image Coordinate Scaling]", {
+        target: activeQuestionNumber ? `Q${activeQuestionNumber}` : "Unmatched",
+        imageNaturalDimensions: `${naturalW}px × ${naturalH}px`,
+        imageDisplayedDimensions: `${displayedW}px × ${displayedH}px`,
+        rawGeminiBbox: `[ymin: ${ymin}, xmin: ${xmin}, ymax: ${ymax}, xmax: ${xmax}]`,
+        rawPercentages: {
+          top: `${paddedBox.raw.top.toFixed(2)}%`,
+          left: `${paddedBox.raw.left.toFixed(2)}%`,
+          width: `${paddedBox.raw.width.toFixed(2)}%`,
+          height: `${paddedBox.raw.height.toFixed(2)}%`,
+        },
+        paddedDisplayPercentages: {
+          top: paddedBox.top,
+          left: paddedBox.left,
+          width: paddedBox.width,
+          height: paddedBox.height,
+        },
+        finalCalculatedPixels: {
+          top: `${pixelTop.toFixed(2)}px`,
+          left: `${pixelLeft.toFixed(2)}px`,
+          width: `${pixelWidth.toFixed(2)}px`,
+          height: `${pixelHeight.toFixed(2)}px`,
+        },
+        zoomLevel: `${zoom}%`,
+      });
+    } else if (isPdf) {
+      const targetPageEl = pageRefs.current[pageNum];
+      if (targetPageEl) {
+        const displayedW = targetPageEl.clientWidth;
+        const displayedH = targetPageEl.clientHeight;
+
+        const pixelTop = (paddedBox.padded.top / 100) * displayedH;
+        const pixelLeft = (paddedBox.padded.left / 100) * displayedW;
+        const pixelWidth = (paddedBox.padded.width / 100) * displayedW;
+        const pixelHeight = (paddedBox.padded.height / 100) * displayedH;
+
+        console.log("📄 [AnswerSheetViewer - PDF Coordinate Scaling]", {
+          target: activeQuestionNumber ? `Q${activeQuestionNumber}` : "Unmatched",
+          pageNum,
+          pageRenderedDimensions: `${displayedW}px × ${displayedH}px`,
+          rawGeminiBbox: `[ymin: ${ymin}, xmin: ${xmin}, ymax: ${ymax}, xmax: ${xmax}]`,
+          paddedDisplayPercentages: {
+            top: paddedBox.top,
+            left: paddedBox.left,
+            width: paddedBox.width,
+            height: paddedBox.height,
+          },
+          finalCalculatedPixels: {
+            top: `${pixelTop.toFixed(2)}px`,
+            left: `${pixelLeft.toFixed(2)}px`,
+            width: `${pixelWidth.toFixed(2)}px`,
+            height: `${pixelHeight.toFixed(2)}px`,
+          },
+          zoomLevel: `${zoom}%`,
+        });
+      }
+    }
+  }, [
+    activeRegion,
+    unmatchedRegion,
+    activeQuestionNumber,
+    isImage,
+    isPdf,
+    renderedWidth,
+    zoom,
+    allRegions,
+  ]);
 
   // Initialize PDF.js worker
   useEffect(() => {
@@ -217,12 +442,6 @@ export function AnswerSheetViewer({
     setLoadError(`Failed to load uploaded PDF: ${error.message}`);
   };
 
-  // Compute rendered width: 100% zoom fits the container width cleanly (fit-to-width)
-  const renderedWidth = Math.max(
-    320,
-    Math.round(containerWidth * (zoom / 100))
-  );
-
   return (
     <div className="flex-1 flex flex-col h-full bg-[#303030] rounded-3xl overflow-hidden shadow-sm border border-[#27272A]">
       {/* Top Header Bar matching Figma */}
@@ -302,7 +521,7 @@ export function AnswerSheetViewer({
               No Answer Sheet Uploaded
             </p>
             <p className="text-xs text-gray-400 mt-1 max-w-xs">
-              Please upload your student answer sheet PDF on the upload page to view mapped answers and highlights.
+              Please upload your student answer sheet PDF or image on the upload page to view mapped answers and highlights.
             </p>
             <button
               onClick={() => router.push("/")}
@@ -332,48 +551,71 @@ export function AnswerSheetViewer({
               maxWidth: "100%",
               transition: "width 0.2s ease-out",
             }}
-            className="relative bg-white rounded-lg shadow-2xl overflow-hidden border border-gray-300 select-none"
+            className="relative bg-white rounded-lg shadow-2xl overflow-hidden border border-gray-300 select-none flex flex-col items-center justify-center"
           >
-            <img
-              src={fileUrl}
-              alt="Uploaded Student Answer Sheet"
-              className="w-full h-auto object-contain block"
-            />
+            {/* Direct Image Container with Exact 1:1 Overlay Anchor */}
+            <div className="relative w-full h-auto block">
+              <img
+                ref={imageRef}
+                src={fileUrl}
+                alt="Uploaded Student Answer Sheet"
+                onLoad={updateImageDimensions}
+                className="w-full h-auto block select-none pointer-events-none"
+              />
 
-            {/* Matched Bounding Box Overlay on Real Image */}
-            {activeRegion && (activeRegion.page === 1 || !activeRegion.page) && (
-              <div
-                ref={activeOverlayRef}
-                style={{
-                  top: `${activeRegion.bbox[0] / 10}%`,
-                  left: `${activeRegion.bbox[1] / 10}%`,
-                  height: `${(activeRegion.bbox[2] - activeRegion.bbox[0]) / 10}%`,
-                  width: `${(activeRegion.bbox[3] - activeRegion.bbox[1]) / 10}%`,
-                }}
-                className="absolute border-2 border-[#16A34A] bg-[#22C55E]/15 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(34,197,94,0.35)] animate-pulse-subtle z-20"
-              >
-                <div className="absolute -top-3.5 -left-0.5 bg-[#16A34A] text-white text-[11px] sm:text-xs font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm flex items-center gap-1">
-                  <span>Q{activeQuestionNumber || "1"}</span>
-                </div>
-              </div>
-            )}
+              {/* Matched Bounding Box Overlay on Real Image */}
+              {activeRegion && (activeRegion.page === 1 || !activeRegion.page) && (
+                (() => {
+                  const boxStyle = computePaddedBoxStyle(
+                    activeRegion.bbox,
+                    allRegions,
+                    1
+                  );
+                  return (
+                    <div
+                      ref={activeOverlayRef}
+                      style={{
+                        top: boxStyle.top,
+                        left: boxStyle.left,
+                        height: boxStyle.height,
+                        width: boxStyle.width,
+                      }}
+                      className="absolute border-2 border-[#16A34A] bg-[#22C55E]/15 rounded-xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(34,197,94,0.35)] animate-pulse-subtle z-20"
+                    >
+                      <div className="absolute -top-4 -left-0.5 bg-[#16A34A] text-white text-[11px] sm:text-xs font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm flex items-center gap-1">
+                        <span>Q{activeQuestionNumber || "1"}</span>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
 
-            {/* Unmatched Bounding Box Overlay on Real Image */}
-            {unmatchedRegion && (unmatchedRegion.page === 1 || !unmatchedRegion.page) && (
-              <div
-                style={{
-                  top: `${unmatchedRegion.bbox[0] / 10}%`,
-                  left: `${unmatchedRegion.bbox[1] / 10}%`,
-                  height: `${(unmatchedRegion.bbox[2] - unmatchedRegion.bbox[0]) / 10}%`,
-                  width: `${(unmatchedRegion.bbox[3] - unmatchedRegion.bbox[1]) / 10}%`,
-                }}
-                className="absolute border-2 border-amber-500 bg-amber-500/20 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(245,158,11,0.35)] z-20"
-              >
-                <div className="absolute -top-3.5 -left-0.5 bg-amber-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm">
-                  <span>Unmatched</span>
-                </div>
-              </div>
-            )}
+              {/* Unmatched Bounding Box Overlay on Real Image */}
+              {unmatchedRegion && (unmatchedRegion.page === 1 || !unmatchedRegion.page) && (
+                (() => {
+                  const boxStyle = computePaddedBoxStyle(
+                    unmatchedRegion.bbox,
+                    allRegions,
+                    1
+                  );
+                  return (
+                    <div
+                      style={{
+                        top: boxStyle.top,
+                        left: boxStyle.left,
+                        height: boxStyle.height,
+                        width: boxStyle.width,
+                      }}
+                      className="absolute border-2 border-amber-500 bg-amber-500/20 rounded-xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(245,158,11,0.35)] z-20"
+                    >
+                      <div className="absolute -top-4 -left-0.5 bg-amber-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm">
+                        <span>Unmatched</span>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
+            </div>
           </div>
         )}
 
@@ -426,38 +668,56 @@ export function AnswerSheetViewer({
 
                   {/* Dynamic Bounding Box Overlay for Matched Active Question on Real PDF Page */}
                   {isCurrentRegionPage && activeRegion && (
-                    <div
-                      ref={activeOverlayRef}
-                      style={{
-                        top: `${activeRegion.bbox[0] / 10}%`,
-                        left: `${activeRegion.bbox[1] / 10}%`,
-                        height: `${(activeRegion.bbox[2] - activeRegion.bbox[0]) / 10}%`,
-                        width: `${(activeRegion.bbox[3] - activeRegion.bbox[1]) / 10}%`,
-                      }}
-                      className="absolute border-2 border-[#16A34A] bg-[#22C55E]/15 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(34,197,94,0.35)] animate-pulse-subtle z-20"
-                    >
-                      {/* Top-Left Green Pill Badge Q{Number} matching Figma */}
-                      <div className="absolute -top-3.5 -left-0.5 bg-[#16A34A] text-white text-[11px] sm:text-xs font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm flex items-center gap-1">
-                        <span>Q{activeQuestionNumber || "1"}</span>
-                      </div>
-                    </div>
+                    (() => {
+                      const boxStyle = computePaddedBoxStyle(
+                        activeRegion.bbox,
+                        allRegions,
+                        pageNum
+                      );
+                      return (
+                        <div
+                          ref={activeOverlayRef}
+                          style={{
+                            top: boxStyle.top,
+                            left: boxStyle.left,
+                            height: boxStyle.height,
+                            width: boxStyle.width,
+                          }}
+                          className="absolute border-2 border-[#16A34A] bg-[#22C55E]/15 rounded-xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(34,197,94,0.35)] animate-pulse-subtle z-20"
+                        >
+                          {/* Top-Left Green Pill Badge Q{Number} matching Figma */}
+                          <div className="absolute -top-4 -left-0.5 bg-[#16A34A] text-white text-[11px] sm:text-xs font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm flex items-center gap-1">
+                            <span>Q{activeQuestionNumber || "1"}</span>
+                          </div>
+                        </div>
+                      );
+                    })()
                   )}
 
                   {/* Dynamic Bounding Box Overlay for Unmatched Handwriting on Real PDF Page */}
                   {isUnmatchedPage && unmatchedRegion && (
-                    <div
-                      style={{
-                        top: `${unmatchedRegion.bbox[0] / 10}%`,
-                        left: `${unmatchedRegion.bbox[1] / 10}%`,
-                        height: `${(unmatchedRegion.bbox[2] - unmatchedRegion.bbox[0]) / 10}%`,
-                        width: `${(unmatchedRegion.bbox[3] - unmatchedRegion.bbox[1]) / 10}%`,
-                      }}
-                      className="absolute border-2 border-amber-500 bg-amber-500/20 rounded-2xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(245,158,11,0.35)] z-20"
-                    >
-                      <div className="absolute -top-3.5 -left-0.5 bg-amber-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm">
-                        <span>Unmatched</span>
-                      </div>
-                    </div>
+                    (() => {
+                      const boxStyle = computePaddedBoxStyle(
+                        unmatchedRegion.bbox,
+                        allRegions,
+                        pageNum
+                      );
+                      return (
+                        <div
+                          style={{
+                            top: boxStyle.top,
+                            left: boxStyle.left,
+                            height: boxStyle.height,
+                            width: boxStyle.width,
+                          }}
+                          className="absolute border-2 border-amber-500 bg-amber-500/20 rounded-xl pointer-events-none transition-all duration-300 ease-out shadow-[0_0_20px_rgba(245,158,11,0.35)] z-20"
+                        >
+                          <div className="absolute -top-4 -left-0.5 bg-amber-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-t-md rounded-br-md shadow-sm">
+                            <span>Unmatched</span>
+                          </div>
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
               );

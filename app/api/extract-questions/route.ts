@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import {
+  generateContentWithFallback,
+  parseGeminiError,
+} from "@/lib/gemini";
 
 export const maxDuration = 60; // Allow up to 60s for Gemini processing
 
@@ -85,7 +89,6 @@ export async function POST(request: NextRequest) {
     const mimeType = file.type || (file.name.endsWith(".pdf") ? "application/pdf" : "image/jpeg");
 
     const ai = new GoogleGenAI({ apiKey });
-    const modelName = "gemini-3.6-flash";
 
     const filePart = {
       inlineData: {
@@ -99,7 +102,6 @@ export async function POST(request: NextRequest) {
     };
 
     console.log("=== Gemini API Request Details ===");
-    console.log(`[Gemini Request] Model: ${modelName}`);
     console.log(`[Gemini Request] File Name: ${file.name}`);
     console.log(`[Gemini Request] File Size (FormData): ${file.size} bytes (${(file.size / 1024).toFixed(2)} KB)`);
     console.log(`[Gemini Request] Buffer Length: ${buffer.length} bytes (${(buffer.length / 1024).toFixed(2)} KB)`);
@@ -119,44 +121,70 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Attempt 1
     let questions: Question[] | null = null;
     let rawResponse = "";
+    let modelUsed = "";
+    let lastApiError: any = null;
 
     try {
-      const result = await ai.models.generateContent({
-        model: modelName,
+      const genResult = await generateContentWithFallback(ai, {
         contents: [filePart, EXACT_PROMPT],
         config: requestConfig,
+        label: "Extract Questions Attempt 1",
       });
-      rawResponse = result.text || "";
-      console.log(`[Gemini Response Attempt 1] Output length: ${rawResponse.length} chars`);
+      rawResponse = genResult.text;
+      modelUsed = genResult.modelUsed;
       questions = cleanAndParseJSON(rawResponse);
     } catch (apiError: any) {
+      lastApiError = apiError;
       console.warn("First Gemini attempt error:", apiError?.message || apiError);
-      if (apiError?.status || apiError?.errorDetails) {
-        console.warn("Gemini Error Details:", JSON.stringify({ status: apiError?.status, details: apiError?.errorDetails }, null, 2));
-      }
     }
 
     // Attempt 2 (Retry with stricter prompt if parsing failed)
     if (!questions) {
       console.log("Retrying question extraction with stricter prompt reminder...");
       try {
-        const retryResult = await ai.models.generateContent({
-          model: modelName,
+        const retryResult = await generateContentWithFallback(ai, {
           contents: [filePart, EXACT_PROMPT + RETRY_SUFFIX],
           config: requestConfig,
+          label: "Extract Questions Attempt 2",
         });
-        rawResponse = retryResult.text || "";
-        console.log(`[Gemini Response Attempt 2] Output length: ${rawResponse.length} chars`);
+        rawResponse = retryResult.text;
+        modelUsed = retryResult.modelUsed;
         questions = cleanAndParseJSON(rawResponse);
       } catch (retryError: any) {
+        lastApiError = retryError;
         console.error("Retry Gemini attempt error:", retryError?.message || retryError);
       }
     }
 
     if (!questions || questions.length === 0) {
+      if (lastApiError) {
+        const parsed = parseGeminiError(lastApiError);
+        if (parsed.isQuotaExceeded) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Gemini API Quota Exceeded (429): You have reached the free tier request limit for the selected model. Please wait a short moment or update GEMINI_MODEL in .env.local (e.g. gemini-2.5-flash).",
+              details: parsed.message,
+            },
+            { status: 429 }
+          );
+        }
+        if (parsed.isOverloaded) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "Gemini model is currently experiencing high demand (503). Please retry in a few seconds.",
+              details: parsed.message,
+            },
+            { status: 503 }
+          );
+        }
+      }
+
       return NextResponse.json(
         {
           success: false,
@@ -172,9 +200,23 @@ export async function POST(request: NextRequest) {
       questions,
       count: questions.length,
       fileName: file.name,
+      modelUsed,
     });
   } catch (error: any) {
     console.error("API extract-questions error:", error);
+    const parsed = parseGeminiError(error);
+    if (parsed.isQuotaExceeded) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Gemini API Quota Exceeded (429): You have reached the free tier limit. Please wait or set GEMINI_MODEL in .env.local.",
+          details: parsed.message,
+        },
+        { status: 429 }
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,

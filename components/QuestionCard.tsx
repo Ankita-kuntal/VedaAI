@@ -96,6 +96,7 @@ export function QuestionCard({
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand();
+              onSelect();
             }}
             title={isExpanded ? "Collapse details" : "Expand details"}
             className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-colors"
@@ -141,7 +142,7 @@ export function QuestionCard({
             <p className="text-xs sm:text-sm text-[#4B5563] leading-relaxed">
               {matchedAnswer?.feedback ||
                 (isAnswered
-                  ? "Answer evaluated by Gemini 3.6 Flash based on question criteria."
+                  ? "Answer evaluated by Gemini Flash AI based on question criteria."
                   : "No answer found for this question on the answer sheet.")}
             </p>
 

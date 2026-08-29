@@ -86,7 +86,7 @@ export function GradingSummaryPanel({
               Evaluation & Grading Summary
             </h3>
             <p className="text-[11px] text-[#71717A]">
-              Graded with Gemini 3.6 Flash
+              Graded with Gemini Flash AI
             </p>
           </div>
         </div>

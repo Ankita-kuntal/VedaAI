@@ -14,7 +14,53 @@ import {
   SAMPLE_MATCHED_ANSWERS,
   SAMPLE_UNMATCHED_ANSWERS,
 } from "@/lib/sampleData";
-import { AnswerRegion } from "@/context/AppContext";
+import { AnswerRegion, MatchedAnswer, Question } from "@/context/AppContext";
+
+/**
+ * Robust matcher that links a question to its student answer even if answers were written
+ * out of order, or if question IDs use numbers ("1"), subparts ("1a"), or prefixes ("q_1", "Q1").
+ */
+export function findMatchedAnswer(
+  answersList: MatchedAnswer[],
+  q: Question
+): MatchedAnswer | undefined {
+  if (!answersList || answersList.length === 0) return undefined;
+
+  const targetId = String(q.id).trim().toLowerCase();
+  const targetNum = String(q.number).trim().toLowerCase();
+  const subpart = String(q.subpart || "").trim().toLowerCase();
+  const targetCombined = `${targetNum}${subpart}`;
+
+  // 1. Direct ID matches
+  const directMatch = answersList.find((a) => {
+    const aId = String(a.questionId).trim().toLowerCase();
+    return (
+      aId === targetId ||
+      aId === targetCombined ||
+      aId === targetNum ||
+      aId === `q_${targetId}` ||
+      aId === `q${targetId}` ||
+      aId.replace(/^q(?:uestion)?_?/i, "") === targetId ||
+      aId.replace(/^q(?:uestion)?_?/i, "") === targetCombined
+    );
+  });
+  if (directMatch) return directMatch;
+
+  // 2. Normalized alphanumeric match
+  const alphaTarget = targetId.replace(/[^a-z0-9]/gi, "");
+  const alphaCombined = targetCombined.replace(/[^a-z0-9]/gi, "");
+  const alphaNum = targetNum.replace(/[^a-z0-9]/gi, "");
+
+  return answersList.find((a) => {
+    const aId = String(a.questionId).trim().toLowerCase();
+    const cleanA = aId.replace(/[^a-z0-9]/gi, "");
+    return (
+      cleanA === alphaTarget ||
+      cleanA === alphaCombined ||
+      (subpart === "" && cleanA === alphaNum)
+    );
+  });
+}
 
 export default function ReviewPage() {
   const router = useRouter();
@@ -44,6 +90,22 @@ export default function ReviewPage() {
       : SAMPLE_UNMATCHED_ANSWERS;
   }, [unmatchedAnswers]);
 
+  // Aggregate all regions across matched and unmatched answers for collision/neighbor detection
+  const allPageRegions = useMemo(() => {
+    const list: AnswerRegion[] = [];
+    answers.forEach((a) => {
+      if (a.regions) {
+        a.regions.forEach((r) => list.push(r));
+      }
+    });
+    unmatched.forEach((u) => {
+      if (u.regions) {
+        u.regions.forEach((r) => list.push(r));
+      }
+    });
+    return list;
+  }, [answers, unmatched]);
+
   // Active states
   const [selectedQuestionId, setSelectedQuestionId] = useState<string>("");
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
@@ -55,13 +117,11 @@ export default function ReviewPage() {
   // Synchronize initial question selection when questions array loads
   useEffect(() => {
     if (questions && questions.length > 0 && !selectedQuestionId) {
-      const initialId = questions[0].id;
-      setSelectedQuestionId(initialId);
-      setExpandedQuestions(new Set([initialId]));
+      const initialQ = questions[0];
+      setSelectedQuestionId(initialQ.id);
+      setExpandedQuestions(new Set([initialQ.id]));
 
-      const matched = answers.find(
-        (a) => a.questionId === initialId || a.questionId === `q_${initialId}`
-      );
+      const matched = findMatchedAnswer(answers, initialQ);
       if (matched && matched.regions && matched.regions.length > 0) {
         if (matched.regions[0].page) {
           setCurrentPage(matched.regions[0].page);
@@ -99,18 +159,23 @@ export default function ReviewPage() {
     });
 
     // Determine target page from answer region
-    const matched = answers.find(
-      (a) => a.questionId === qId || a.questionId === `q_${qId}`
-    );
-    if (matched && matched.regions && matched.regions.length > 0) {
-      const region = matched.regions[0];
-      if (region.page) {
-        setCurrentPage(region.page);
+    const targetQ = questions.find((q) => q.id === qId);
+    if (targetQ) {
+      const matched = findMatchedAnswer(answers, targetQ);
+      if (matched && matched.regions && matched.regions.length > 0) {
+        const region = matched.regions[0];
+        if (region.page) {
+          setCurrentPage(region.page);
+        }
       }
     }
   };
 
   const handleToggleQuestionExpand = (qId: string) => {
+    setSelectedQuestionId(qId);
+    setActiveUnmatchedRegion(null);
+    setActiveRegionIndex(0);
+
     setExpandedQuestions((prev) => {
       const next = new Set(prev);
       if (next.has(qId)) {
@@ -120,20 +185,28 @@ export default function ReviewPage() {
       }
       return next;
     });
+
+    const targetQ = questions.find((q) => q.id === qId);
+    if (targetQ) {
+      const matched = findMatchedAnswer(answers, targetQ);
+      if (matched && matched.regions && matched.regions.length > 0) {
+        const region = matched.regions[0];
+        if (region.page) {
+          setCurrentPage(region.page);
+        }
+      }
+    }
   };
 
   // Find active region for the selected question
-  const activeMatchedAnswer = useMemo(() => {
-    return answers.find(
-      (a) =>
-        a.questionId === selectedQuestionId ||
-        a.questionId === `q_${selectedQuestionId}`
-    );
-  }, [answers, selectedQuestionId]);
-
   const activeQuestionObj = useMemo(() => {
     return questions.find((q) => q.id === selectedQuestionId);
   }, [questions, selectedQuestionId]);
+
+  const activeMatchedAnswer = useMemo(() => {
+    if (!activeQuestionObj) return undefined;
+    return findMatchedAnswer(answers, activeQuestionObj);
+  }, [answers, activeQuestionObj]);
 
   const activeRegion = useMemo<AnswerRegion | null>(() => {
     if (activeUnmatchedRegion) return null;
@@ -208,13 +281,7 @@ export default function ReviewPage() {
               <GradingSummaryPanel questions={questions} answers={answers} />
 
               {questions.map((question) => {
-                const matched = answers.find(
-                  (a) =>
-                    a.questionId === question.id ||
-                    a.questionId === question.number ||
-                    a.questionId === `q_${question.id}`
-                );
-
+                const matched = findMatchedAnswer(answers, question);
                 const isSelected = selectedQuestionId === question.id;
                 const isExpanded = expandedQuestions.has(question.id);
 
@@ -276,6 +343,7 @@ export default function ReviewPage() {
               currentPage={currentPage}
               onPageChange={(p) => setCurrentPage(p)}
               totalPages={1}
+              allRegions={allPageRegions}
             />
           </div>
         </div>
